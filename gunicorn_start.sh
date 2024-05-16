@@ -15,4 +15,5 @@ APP_MODULE=app:app
 # 启动 Gunicorn 服务器
 cd $PROJECT_DIR
 source $VENV_DIR/bin/activate
+echo "Starting Gunicorn server..."
 exec gunicorn -c $GUNICORN_CONF $APP_MODULE
