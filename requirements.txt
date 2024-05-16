@@ -3,3 +3,4 @@ SQLAlchemy
 requests
 flask_cors
 flask_sqlalchemy
+pymysql
