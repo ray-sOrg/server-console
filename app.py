@@ -21,10 +21,10 @@ with app.app_context():
         db.create_all()
 
 
-app.register_blueprint(index_pb, url_prefix='/api')
+app.register_blueprint(index_pb)
 
 # 注册用户 API 蓝图
-app.register_blueprint(upload_pb, url_prefix='/api')
+app.register_blueprint(upload_pb)
 
 
 if __name__ == '__main__':
