@@ -5,4 +5,4 @@ index_pb = Blueprint('index_api', __name__)
 
 @index_pb.route('/index')
 def index():
-    return "pass"
+    return "pass123"
