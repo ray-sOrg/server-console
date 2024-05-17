@@ -8,6 +8,6 @@ def index():
     response = {
         "code": 200,
         "message": "Success",
-        "data": "pass123"
+        "data": "index test"
     }
     return jsonify(response)
