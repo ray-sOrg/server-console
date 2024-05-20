@@ -4,3 +4,4 @@ requests
 flask_cors
 flask_sqlalchemy
 pymysql
+Flask-JWT-Extended

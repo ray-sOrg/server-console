@@ -2,12 +2,14 @@ import time
 from flask import Blueprint, jsonify, request
 from model.user import User
 from extensions import db
+from flask_jwt_extended import jwt_required
 
 
 user_api_pb = Blueprint('user_api', __name__)
 
 
 @user_api_pb.route('/user/add', methods=['POST'])
+@jwt_required()
 def add_user():
     data = request.json
     username = data.get('username')
@@ -35,6 +37,7 @@ def add_user():
 
 
 @user_api_pb.route('/user/list', methods=['GET'])
+@jwt_required()
 def get_user_list():
     page_number = request.args.get('pageNumber', 1, type=int)
     page_size = request.args.get('pageSize', 10, type=int)
@@ -56,6 +59,7 @@ def get_user_list():
 
 
 @user_api_pb.route('/user/delete', methods=['POST'])
+@jwt_required()
 def delete_user():
     data = request.json
     uuid = data.get('uuid', '')

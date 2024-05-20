@@ -2,11 +2,14 @@ from flask import Flask
 from flask_cors import CORS
 from extensions import db
 from utils import register_api_blueprints
+from flask_jwt_extended import JWTManager
 import config
 
 app = Flask(__name__)
 CORS(app)
 app.config.from_object(config)
+app.config['JWT_SECRET_KEY'] = 'wjl'
+jwt = JWTManager(app)
 db.init_app(app)
 
 # 创建应用程序上下文
