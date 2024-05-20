@@ -4,10 +4,10 @@ import os
 from extensions import db
 from model.images import Image
 
-upload_pb = Blueprint('upload_api', __name__)
+upload_api_pb = Blueprint('upload_api', __name__)
 
 
-@upload_pb.route('/upload/images', methods=["POST"])
+@upload_api_pb.route('/upload/images', methods=["POST"])
 def upload_images():
     if 'file' not in request.files:
         return 'No file part'

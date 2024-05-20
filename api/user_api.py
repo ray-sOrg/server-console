@@ -2,13 +2,12 @@ import time
 from flask import Blueprint, jsonify, request
 from model.user import User
 from extensions import db
-from datetime import datetime
 
 
-user_pb = Blueprint('user_api', __name__)
+user_api_pb = Blueprint('user_api', __name__)
 
 
-@user_pb.route('/user/add', methods=['POST'])
+@user_api_pb.route('/user/add', methods=['POST'])
 def add_user():
     data = request.json
     username = data.get('username')
@@ -35,7 +34,7 @@ def add_user():
     return jsonify({"code": 200, "message": "Success", "data": {"user_id": new_user.uid}}), 200
 
 
-@user_pb.route('/user/list', methods=['GET'])
+@user_api_pb.route('/user/list', methods=['GET'])
 def get_user_list():
     page_number = request.args.get('pageNumber', 1, type=int)
     page_size = request.args.get('pageSize', 10, type=int)
@@ -56,7 +55,7 @@ def get_user_list():
         return jsonify({"code": 500, "message": str(e), "data": {}}), 200
 
 
-@user_pb.route('/user/delete', methods=['POST'])
+@user_api_pb.route('/user/delete', methods=['POST'])
 def delete_user():
     data = request.json
     uuid = data.get('uuid', '')

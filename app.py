@@ -1,9 +1,7 @@
 from flask import Flask
 from flask_cors import CORS
-from api.upload_api import upload_pb
-from api.index_api import index_pb
-from api.user_api import user_pb
 from extensions import db
+from utils import register_api_blueprints
 import config
 
 app = Flask(__name__)
@@ -20,10 +18,8 @@ with app.app_context():
         db.create_all()
 
 
-# 注册用户 API 蓝图
-app.register_blueprint(index_pb)
-app.register_blueprint(upload_pb)
-app.register_blueprint(user_pb)
+# 调用注册蓝图的方法
+register_api_blueprints(app)
 
 
 if __name__ == '__main__':

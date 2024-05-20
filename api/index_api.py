@@ -1,9 +1,9 @@
 from flask import Flask, Blueprint, jsonify
 
-index_pb = Blueprint('index_api', __name__)
+index_api_pb = Blueprint('index_api', __name__)
 
 
-@index_pb.route('/index')
+@index_api_pb.route('/index')
 def index():
     response = {
         "code": 200,
