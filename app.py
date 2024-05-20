@@ -1,6 +1,5 @@
 from flask import Flask
 from flask_cors import CORS
-from flask_sqlalchemy import SQLAlchemy
 from api.upload_api import upload_pb
 from api.index_api import index_pb
 from api.user_api import user_pb

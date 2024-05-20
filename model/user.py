@@ -9,7 +9,7 @@ class User(db.Model):
     username = db.Column(db.String(100), unique=True, nullable=False)
     password = db.Column(db.String(100), nullable=False)
     role = db.Column(db.Enum('super_admin', 'admin', 'user', name='user_roles'), nullable=False)
-    create_time = db.Column(db.DateTime, default=datetime.now)
+    create_time = db.Column(db.DateTime, default=datetime.utcnow)
 
     def __init__(self, **kwargs):
         super(User, self).__init__(**kwargs)
