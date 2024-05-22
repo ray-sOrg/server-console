@@ -10,16 +10,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
+      - name: Checkout code
+        uses: actions/checkout@v2
 
-    - name: Copy SSH key
-      uses: appleboy/ssh-action@master
-      with:
-        key: ${{ secrets.SSH_KEY }}
-        host: ${{ secrets.HOST }}
-        username: ${{ secrets.USER_NAME }}
-        script: |
-          cd /var/www/server/ray-flask
-          git pull origin main
-          sudo systemctl restart ray_flask
+      - name: Copy SSH key
+        uses: appleboy/ssh-action@master
+        with:
+          key: ${{ secrets.SSH_KEY }}
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USER_NAME }}
+          script: |
+            cd /var/www/server/ray-flask
+            git pull origin main
+            # 激活虚拟环境并重新安装依赖项
+            source my_venv/bin/activate
+            pip install -r requirements.txt
+            # 重启 Gunicorn 服务器
+            sudo systemctl restart ray_flask
