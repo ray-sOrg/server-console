@@ -2,8 +2,8 @@ import time
 from flask import Blueprint, jsonify, request
 from model.user import User
 from extensions import db
-from flask_jwt_extended import jwt_required
-
+from flask_jwt_extended import jwt_required, get_jwt_identity
+from werkzeug.security import generate_password_hash
 
 user_api_pb = Blueprint('user_api', __name__)
 
@@ -29,7 +29,9 @@ def add_user():
         return jsonify({"code": 500, "message": "Bad Request", "data": "Invalid role specified"}), 200
 
     # 创建并添加新用户
-    new_user = User(username=username, password=password, role=role)
+    # 使用 generate_password_hash 函数将密码哈希化
+    password_hashed = generate_password_hash(password, method='pbkdf2:sha256')
+    new_user = User(username=username, password=password_hashed, role=role)
     db.session.add(new_user)
     db.session.commit()
 
@@ -78,3 +80,24 @@ def delete_user():
     except Exception as e:
         return jsonify({"code": 500, "message": str(e), "data": {}}), 200
 
+
+@user_api_pb.route('/user/login/info', methods=['GET'])
+@jwt_required()
+def login_info_user():
+    try:
+        # 从请求上下文中获取当前用户身份
+        current_user_identity = get_jwt_identity()
+        # 查询用户信息
+        user = User.query.filter_by(username=current_user_identity).first()
+        if not user:
+            return jsonify({"code": 500, "message": "User not found", "data": {}}), 200
+        # 构造返回的用户信息
+        user_info = {
+            "uuid": user.uid,
+            "username": user.username,
+            "role": user.role,
+            "create_time": user.create_time
+        }
+        return jsonify({"code": 200, "message": "Success", "data": user_info}), 200
+    except Exception as e:
+        return jsonify({"code": 500, "message": str(e), "data": {}}), 200
