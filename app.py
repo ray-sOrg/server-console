@@ -9,13 +9,10 @@ import config
 app = Flask(__name__)
 CORS(app)
 app.config.from_object(config)
-app.config['JWT_SECRET_KEY'] = 'wjl'
 
-# db init
 db.init_app(app)
-
-# 初始化扩展
 jwt.init_app(app)
+
 # 注册 JWT 错误处理程序
 register_jwt_errors()
 
