@@ -32,7 +32,7 @@ register_api_blueprints(app)
 
 # 获取 FLASK_ENV 的值
 flask_env = os.environ.get('FLASK_ENV')
-logging.debug(f"FLASK_ENV: {flask_env}")
+app.logger.debug(f"FLASK_ENV: {flask_env}")
 
 
 if __name__ == '__main__':

@@ -2,8 +2,16 @@ from flask import Blueprint, jsonify, render_template
 from flask_jwt_extended import jwt_required
 from oss_utils import OSSClient
 from config import access_key_id, access_key_secret, endpoint, bucket_name
+from app import app
+import os
 
 index_api_pb = Blueprint('index_api', __name__)
+
+
+@index_api_pb.route('/logger')
+def logger():
+    app.logger.debug("FLASK_ENV: %s", os.environ.get('FLASK_ENV'))
+    return "Hello, Logger!"
 
 
 @index_api_pb.route('/index')
