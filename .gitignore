@@ -1,0 +1,24 @@
+# Python virtual environment
+venv/
+env/
+my_env/
+
+# Compiled files
+*.pyc
+*.pyo
+
+# Temporary files
+.DS_Store
+*.swp
+*.swo
+
+# Logs
+logs/
+*.log
+
+# Configuration files with sensitive information
+config.ini
+secrets.json
+
+# Other
+__pycache__/
