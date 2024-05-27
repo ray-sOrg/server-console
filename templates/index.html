@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OSS 文件列表</title>
+</head>
+<body>
+    <h1>OSS 文件列表</h1>
+    <ul>
+        {% for file in files %}
+            <li><a href="{{ file[1] }}">{{ file[0] }}</a></li>
+        {% endfor %}
+    </ul>
+</body>
+</html>

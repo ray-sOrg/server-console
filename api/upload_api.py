@@ -2,7 +2,7 @@ from flask import Blueprint, request
 from werkzeug.utils import secure_filename
 import os
 from extensions import db
-from model.images import Image
+from model.image import Image
 from flask_jwt_extended import jwt_required
 
 upload_api_pb = Blueprint('upload_api', __name__)
