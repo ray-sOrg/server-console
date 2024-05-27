@@ -12,6 +12,9 @@ GUNICORN_CONF=$PROJECT_DIR/gunicorn_config.py
 # 应用程序入口点
 APP_MODULE=app:app
 
+# 设置 FLASK_ENV 环境变量为 "production"
+export FLASK_ENV=production
+
 # 启动 Gunicorn 服务器
 cd $PROJECT_DIR
 
