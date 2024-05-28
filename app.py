@@ -4,10 +4,12 @@ from extensions import db, jwt
 from utils.register_api_blueprints import register_api_blueprints
 from utils.db_utils import create_missing_tables
 from utils.jwt_errors import register_jwt_errors
+from dotenv import load_dotenv
 import config
 import os
 import logging
 
+load_dotenv()
 
 app = Flask(__name__)
 

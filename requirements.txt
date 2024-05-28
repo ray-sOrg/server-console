@@ -6,3 +6,4 @@ flask_sqlalchemy
 pymysql
 Flask-JWT-Extended
 oss2
+python-dotenv
