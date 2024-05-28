@@ -6,14 +6,10 @@ from utils.db_utils import create_missing_tables
 from utils.jwt_errors import register_jwt_errors
 from dotenv import load_dotenv
 import config
-import os
-import logging
 
 load_dotenv()
 
 app = Flask(__name__)
-
-logging.basicConfig(filename='flask_env.log', level=logging.DEBUG)  # 将日志记录到文件中，设置日志级别为 DEBUG
 
 CORS(app)
 app.config.from_object(config)
@@ -30,11 +26,6 @@ create_missing_tables(app)
 
 # 调用注册蓝图的方法
 register_api_blueprints(app)
-
-
-# 获取 FLASK_ENV 的值
-flask_env = os.environ.get('FLASK_ENV')
-app.logger.debug(f"FLASK_ENV: app_ {flask_env}")
 
 
 if __name__ == '__main__':

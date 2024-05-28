@@ -25,9 +25,9 @@ def index():
     return jsonify(response)
 
 
-@index_api_pb.route('/asyncOss')
+@index_api_pb.route('/image/asyncOss')
 @jwt_required()
-def readOss():
+def readImageOss():
     oss_client = OSSClient(access_key_id, access_key_secret, endpoint, bucket_name)
     files = oss_client.list_files()
     if files:
