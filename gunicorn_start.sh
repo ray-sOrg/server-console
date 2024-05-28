@@ -15,6 +15,9 @@ APP_MODULE=app:app
 # 设置 FLASK_ENV 环境变量为 "production"
 export FLASK_ENV=production
 
+# 打印环境变量以确认设置正确
+echo "FLASK_ENV is set to: $FLASK_ENV"
+
 # 启动 Gunicorn 服务器
 cd $PROJECT_DIR
 
