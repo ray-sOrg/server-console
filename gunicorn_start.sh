@@ -29,4 +29,4 @@ pip install -r $PROJECT_DIR/requirements.txt
 
 # 启动 Gunicorn 服务器
 echo "Starting Gunicorn server..."
-exec gunicorn -c $GUNICORN_CONF $APP_MODULE
+exec FLASK_ENV=production gunicorn -c $GUNICORN_CONF $APP_MODULE
