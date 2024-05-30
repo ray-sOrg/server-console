@@ -85,34 +85,34 @@ def fetch_images_from_oss():
 @jwt_required()
 def readImageOss():
     task = fetch_images_from_oss.delay()
-    return jsonify({"code": 200, "message": "Task started", "task_id": task.id}), 202
+    return jsonify({"code": 200, "message": "Task started", "data": {}, "task_id": task.id}), 202
 
 
-@index_api_pb.route('/image/task_status/<task_id>')
+@index_api_pb.route('/image/task_status/<task_id>', methods=['GET'])
 @jwt_required()
 def get_task_status(task_id):
     task = fetch_images_from_oss.AsyncResult(task_id)
     if task.state == 'PENDING':
-        response = {
+        data = {
             'state': task.state,
             'current': 0,
             'total': 1,
             'status': 'Pending...'
         }
     elif task.state != 'FAILURE':
-        response = {
+        data = {
             'state': task.state,
             'current': task.info.get('current', 0),
             'total': task.info.get('total', 1),
             'status': task.info.get('status', '')
         }
         if 'result' in task.info:
-            response['result'] = task.info['result']
+            data['result'] = task.info['result']
     else:
-        response = {
+        data = {
             'state': task.state,
             'current': 1,
             'total': 1,
             'status': str(task.info)
         }
-    return jsonify(response)
+    return jsonify({"code": 200, "message": "", "data": data}), 202
