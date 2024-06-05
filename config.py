@@ -16,6 +16,9 @@ JWT_SECRET_KEY = 'wjl'
 JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=15)
 JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=7)
 
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+CELERY_BROKER_URL = 'redis://localhost:6379/0'
+
 # OSS 配置
 access_key_id = 'LTAI5tQtaWvad7oobHnUZZqW'
 access_key_secret = 'oWjbVLO9HRl0vZb1lsYxoHqWxjM0NF'

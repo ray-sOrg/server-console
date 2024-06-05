@@ -1,7 +1,7 @@
+from extensions import db
 import importlib
 import os
 import logging
-from extensions import db
 
 
 def get_model_modules():

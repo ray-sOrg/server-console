@@ -5,6 +5,7 @@ from utils.register_api_blueprints import register_api_blueprints
 from utils.db_utils import create_missing_tables
 from utils.jwt_errors import register_jwt_errors
 from dotenv import load_dotenv
+from mycelery import make_celery
 import config
 
 load_dotenv()
@@ -27,6 +28,8 @@ create_missing_tables(app)
 # 调用注册蓝图的方法
 register_api_blueprints(app)
 
+# 构建celery
+celery = make_celery(app)
 
 if __name__ == '__main__':
     app.run()

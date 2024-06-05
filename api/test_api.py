@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, current_app
 from flask_jwt_extended import jwt_required
 import os
 
@@ -13,5 +13,21 @@ def test_flask_env():
         "code": 200,
         "message": "Success",
         "data": FLASK_ENV
+    }
+    return jsonify(response)
+
+
+def test_celery_task():
+    return 'task completed'
+
+
+@test_api_pb.route('/test/celery', methods=["GET"])
+@jwt_required()
+def trigger_celery_task():
+    task = current_app.celery.send_task("test_flask_env")
+    response = {
+        "code": 200,
+        "message": "Celery task has been triggered",
+        "task_id": task.id
     }
     return jsonify(response)
