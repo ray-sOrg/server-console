@@ -24,7 +24,7 @@ def test_celery_task():
 @test_api_pb.route('/test/celery', methods=["GET"])
 @jwt_required()
 def trigger_celery_task():
-    task = current_app.celery.send_task("test_flask_env")
+    task = current_app.celery.send_task("test_celery_task")
     response = {
         "code": 200,
         "message": "Celery task has been triggered",
