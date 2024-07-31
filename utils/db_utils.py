@@ -32,9 +32,24 @@ def create_missing_tables(app):
             # 获取数据库中现有表的信息
             inspector = db.inspect(db.engine)
             existing_tables = inspector.get_table_names()
-            print(f'________{existing_tables}')
+            print(f'获取数据库中现有表的信息________{existing_tables}')
+
+            # 获取models目录下的所有.py文件名
+            project_root = os.path.dirname(os.path.dirname(__file__))  # 获取根目录
+            model_dir = os.path.join(project_root, 'model')
+
+            required_tables = [
+                os.path.splitext(f)[0]
+                for f in os.listdir(model_dir)
+                if f.endswith('.py') and not f.startswith('__')
+            ]
+            print(f'获取所有model中应有表的信息________{required_tables}')
+
+            # 检查是否有任意一个需要的表不存在
+            missing_tables = [table for table in required_tables if table not in existing_tables]
+
             # 检查并创建所有不存在的表
-            if 'image' not in existing_tables or 'user' not in existing_tables:
+            if missing_tables:
                 print(f'________缺失表')
                 db.create_all()
             else:
