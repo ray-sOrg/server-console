@@ -13,7 +13,7 @@ SQLALCHEMY_DATABASE_URI = "{}+{}://{}:{}@{}:{}/{}?charset=utf8".format(DIALECT, 
 JWT_TOKEN_LOCATION = ["cookies"]
 JWT_COOKIE_SECURE = False
 JWT_SECRET_KEY = 'wjl'
-JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=15)
+JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=30)
 JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=7)
 
 CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
