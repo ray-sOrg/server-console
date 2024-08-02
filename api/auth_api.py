@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request, make_response
-from flask_jwt_extended import (create_access_token, unset_jwt_cookies, set_access_cookies, create_refresh_token,
-                                jwt_required, get_jwt_identity)
+from flask_jwt_extended import (create_access_token, unset_jwt_cookies, set_access_cookies, set_refresh_cookies,
+                                create_refresh_token, jwt_required, get_jwt_identity)
 from model.user import User
 from werkzeug.security import check_password_hash
 
@@ -31,8 +31,9 @@ def login():
     response = make_response(jsonify({"code": 200, "message": "Success", "token": access_token,
                                      "refresh_token": refresh_token,"data": user_data}), 200)
 
-    # 设置访问令牌到 Cookie
+    # 设置访问令牌和刷新令牌到Cookie
     set_access_cookies(response, access_token)
+    set_refresh_cookies(response, refresh_token)
     return response
 
 
@@ -48,5 +49,7 @@ def logout():
 @jwt_required(refresh=True)
 def refresh():
     identity = get_jwt_identity()
-    token = create_access_token(identity=identity)
-    return jsonify({"code": 200, "message": "token refresh successful", "data": {token: token}})
+    access_token = create_access_token(identity=identity)
+    response = jsonify({"code": 200, "message": "token refresh successful", "data": {"token": access_token}})
+    set_access_cookies(response, access_token)
+    return response
