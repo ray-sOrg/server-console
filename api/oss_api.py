@@ -1,10 +1,10 @@
 from flask import Blueprint, jsonify
 from flask_jwt_extended import jwt_required
-import datetime
 import base64
 import json
 import hmac
 import hashlib
+import time
 
 
 oss_api_pb = Blueprint('oss_api', __name__)
@@ -19,48 +19,31 @@ service = "oss"
 endpoint = f"https://{bucket_name}.{region}.aliyuncs.com"
 
 
-
-
 @oss_api_pb.route('/oss/credentials', methods=['GET'])
 @jwt_required()
 def get_oss_credentials():
-    # 当前时间和日期
-    current_time = datetime.datetime.utcnow()
-    date_str = current_time.strftime('%Y%m%dT%H%M%SZ')
-    date = current_time.strftime('%Y%m%d')
+    expire_time = 60
+    now = int(time.time())
+    expire_sync_point = now + expire_time
+    expiration = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(expire_sync_point))
 
-    # 定义 Policy
-    expiration = (current_time + datetime.timedelta(hours=1)).isoformat() + "Z"
-    policy_document = {
+    policy_dict = {
         "expiration": expiration,
         "conditions": [
             {"bucket": bucket_name},
-            ["starts-with", "$key", upload_path],
-            ["content-length-range", 0, 104857600]  # 文件大小范围
+            ["starts-with", "$key", upload_path]
         ]
     }
+    policy = json.dumps(policy_dict).strip()
+    policy_encoded = base64.b64encode(policy.encode('utf-8')).decode('utf-8')
 
-    # 编码 Policy
-    policy = base64.b64encode(json.dumps(policy_document).encode()).decode()
-
-    # 计算 Signature
-    def sign(key, msg):
-        return hmac.new(key.encode(), msg.encode(), hashlib.sha1).digest()
-
-    # 创建签名
-    canonical_request = f"POST\n/\n\nhost:{bucket_name}.{region}.aliyuncs.com\nx-oss-date:{date_str}\n\nhost;x-oss-date"
-    string_to_sign = f"AWS4-HMAC-SHA256\n{date_str}\n{date}/{region}/{service}/aws4_request\n{hashlib.sha256(canonical_request.encode()).hexdigest()}"
-    signing_key = hmac.new(f"AWS4{access_key_secret}".encode(), date.encode(), hashlib.sha256).digest()
-    signing_key = hmac.new(signing_key, f"{region}/{service}/aws4_request".encode(), hashlib.sha256).digest()
-    signature = base64.b64encode(hmac.new(signing_key, string_to_sign.encode(), hashlib.sha256).digest()).decode()
+    h = hmac.new(access_key_secret.encode('utf-8'), policy_encoded.encode('utf-8'), hashlib.sha1)
+    signature = base64.b64encode(h.digest()).decode('utf-8')
 
     return jsonify({
-        "OSSAccessKeyId": access_key_id,
-        "policy": policy,
-        "Signature": signature,
-        "bucket": bucket_name,
-        "endpoint": endpoint,
-        "x-oss-signature-version": "OSS4-HMAC-SHA256",
-        "x-oss-credential": f"{access_key_id}/{date}/{region}/{service}/aliyun_v4_request",
-        "x-oss-date": date_str
+        'dir': upload_path,
+        'host': endpoint,
+        'accessId': access_key_id,
+        'policy': policy_encoded,
+        'signature': signature
     })
