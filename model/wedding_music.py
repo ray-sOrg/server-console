@@ -1,8 +1,8 @@
 from extensions import db
 
 
-class Music(db.Model):
-    __tablename__ = 'music'
+class WeddingMusic(db.Model):
+    __tablename__ = 'wedding_music'
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(100), nullable=True)
     artist = db.Column(db.String(100), nullable=False)
