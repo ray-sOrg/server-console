@@ -8,6 +8,35 @@ from extensions import db
 wedding_api_pb = Blueprint('wedding_api', __name__)
 
 
+@wedding_api_pb.route('/wedding/music/add', methods=['Post'])
+def add_wedding_music():
+    data = request.get_json()
+    if not data:
+        return jsonify({"code": 400, "message": "No input data provided"}), 400
+    title = data.get('title')
+    artist = data.get('artist')
+    url = data.get('url')
+    album = data.get('album')
+    if not title or not url:
+        return jsonify({"code": 400, "message": "Title and image_path are required"}), 400
+
+    new_wedding_music = WeddingMusic(
+        title=title,
+        artist=artist,
+        album=album,
+        path=url,
+    )
+    try:
+        db.session.add(new_wedding_music)
+        db.session.commit()
+        return jsonify({"code": 201, "message": "Photo added successfully", "data": {
+            "music_id": new_wedding_music.id
+        }}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"code": 500, "message": str(e)}), 200
+
+
 @wedding_api_pb.route('/wedding/music/list', methods=['GET'])
 def get_music_list():
     music_records = WeddingMusic.query.all()
