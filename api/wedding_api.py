@@ -12,13 +12,13 @@ wedding_api_pb = Blueprint('wedding_api', __name__)
 def add_wedding_music():
     data = request.get_json()
     if not data:
-        return jsonify({"code": 400, "message": "No input data provided"}), 400
+        return jsonify({"code": 500, "message": "No input data provided"}), 200
     title = data.get('title')
     artist = data.get('artist')
     url = data.get('url')
     album = data.get('album')
     if not title or not url:
-        return jsonify({"code": 400, "message": "Title and image_path are required"}), 400
+        return jsonify({"code": 500, "message": "Title and image_path are required"}), 200
 
     new_wedding_music = WeddingMusic(
         title=title,
@@ -29,7 +29,7 @@ def add_wedding_music():
     try:
         db.session.add(new_wedding_music)
         db.session.commit()
-        return jsonify({"code": 201, "message": "Photo added successfully", "data": {
+        return jsonify({"code": 200, "message": "Music added successfully", "data": {
             "music_id": new_wedding_music.id
         }}), 200
     except Exception as e:
@@ -77,13 +77,13 @@ def get_wedding_photo_wall_list():
 def add_wedding_photo_wall():
     data = request.get_json()
     if not data:
-        return jsonify({"code": 400, "message": "No input data provided"}), 400
+        return jsonify({"code": 500, "message": "No input data provided"}), 200
     title = data.get('title')
     description = data.get('description')
     image_path = data.get('image_path')
 
     if not title or not image_path:
-        return jsonify({"code": 400, "message": "Title and image_path are required"}), 400
+        return jsonify({"code": 500, "message": "Title and image_path are required"}), 200
 
     new_photo = WeddingPhotoWall(
         title=title,
@@ -95,7 +95,7 @@ def add_wedding_photo_wall():
     try:
         db.session.add(new_photo)
         db.session.commit()
-        return jsonify({"code": 201, "message": "Photo added successfully", "data": {
+        return jsonify({"code": 200, "message": "Photo added successfully", "data": {
             "id": new_photo.id,
             "title": new_photo.title,
             "description": new_photo.description,
