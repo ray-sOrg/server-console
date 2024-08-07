@@ -1,11 +1,11 @@
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required
+from model.image import Image
 import base64
 import json
 import hmac
 import hashlib
 import time
-
 
 oss_api_pb = Blueprint('oss_api', __name__)
 
@@ -47,3 +47,24 @@ def get_oss_credentials():
         'policy': policy_encoded,
         'signature': signature
     })
+
+
+@oss_api_pb.route('/oss/images/list', methods=['GET'])
+@jwt_required()
+def get_oss_images_list():
+    page_number = request.args.get('pageNumber', 1, type=int)
+    page_size = request.args.get('pageSize', 20, type=int)
+    keyword = request.args.get('keyword', '', type=str)
+    try:
+        # 构造查询
+        query = Image.query.order_by(Image.upload_time.desc())
+        if keyword:
+            query = query.filter(Image.name.ilike(f"%{keyword}%"))
+        images = query.paginate(page=page_number, per_page=page_size, error_out=False)
+        images_list = [{'id': img.id, 'name': img.name, 'path': img.path, 'upload_time': img.upload_time,
+                        'last_modified': img.last_modified, 'size': img.size, 'content_type': img.content_type} for img
+                       in images.items]
+        total = images.total
+        return jsonify({"code": 200, "message": "Success", "data": images_list, "total": total}), 200
+    except Exception as e:
+        return jsonify({"code": 500, "message": str(e), "data": {}}), 200
