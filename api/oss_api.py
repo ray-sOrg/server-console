@@ -22,6 +22,15 @@ endpoint = f"https://{bucket_name}.{region}.aliyuncs.com"
 @oss_api_pb.route('/oss/credentials', methods=['GET'])
 @jwt_required()
 def get_oss_credentials():
+    file_type = request.args.get('type')
+    # 根据文件类型动态生成 upload_path
+    if file_type == 'music':
+        upload_path = "wedding/music/"
+    elif file_type == 'image':
+        upload_path = "wedding/image/"
+    else:
+        return jsonify({'error': 'Invalid file type'}), 400
+
     expire_time = 60
     now = int(time.time())
     expire_sync_point = now + expire_time
