@@ -71,6 +71,34 @@ def get_wedding_photo_wall_list():
         return jsonify({"code": 200, "message": "Success", "data": photo_list, "total": total}), 200
     except Exception as e:
         return jsonify({"code": 500, "message": str(e), "data": {}}), 200
+    
+
+@wedding_api_pb.route('/wedding/photo/wall/list/all', methods=['GET'])
+def get_wedding_photo_wall_list_all():
+    keyword = request.args.get('keyword', '', type=str)
+
+    try:
+        query = WeddingPhotoWall.query.order_by(WeddingPhotoWall.created_at.desc())
+        if keyword:
+            query = query.filter(WeddingPhotoWall.title.ilike(f"%{keyword}%"))
+
+        # 获取所有数据，而不是分页
+        photos = query.all()
+        photo_list = [
+            {
+                'id': photo.id,
+                'title': photo.title,
+                'description': photo.description,
+                'image_path': photo.image_path,
+                'created_at': photo.created_at,
+                'updated_at': photo.updated_at
+            }
+            for photo in photos
+        ]
+        total = len(photo_list)  # 更新total的计算方式
+        return jsonify({"code": 200, "message": "Success", "data": photo_list, "total": total}), 200
+    except Exception as e:
+        return jsonify({"code": 500, "message": str(e), "data": {}}), 200
 
 
 @wedding_api_pb.route('/wedding/photo/wall/add', methods=['POST'])
