@@ -89,7 +89,7 @@ def get_wedding_photo_wall_list_all():
                 'id': photo.id,
                 'title': photo.title,
                 'description': photo.description,
-                'image_path': photo.image_path,
+                'src': photo.image_path,
                 'created_at': photo.created_at,
                 'updated_at': photo.updated_at
             }
