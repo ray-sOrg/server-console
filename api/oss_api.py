@@ -31,7 +31,7 @@ def get_oss_credentials():
     else:
         return jsonify({'error': 'Invalid file type'}), 400
 
-    expire_time = 60
+    expire_time = 600
     now = int(time.time())
     expire_sync_point = now + expire_time
     expiration = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(expire_sync_point))
