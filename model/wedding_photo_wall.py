@@ -5,9 +5,10 @@ from datetime import datetime
 class WeddingPhotoWall(db.Model):
     __tablename__ = 'wedding_photo_wall'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    title = db.Column(db.String(255), nullable=False)
-    description = db.Column(db.Text, nullable=True)
-    image_path = db.Column(db.String(255), nullable=False)
+    title = db.Column(db.Unicode(255), nullable=False)
+    description = db.Column(db.UnicodeText, nullable=True)
+    src = db.Column(db.String(255), nullable=False)
+    order = db.Column(db.Integer, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

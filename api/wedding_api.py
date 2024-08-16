@@ -18,7 +18,7 @@ def add_wedding_music():
     url = data.get('url')
     album = data.get('album')
     if not title or not url:
-        return jsonify({"code": 500, "message": "Title and image_path are required"}), 200
+        return jsonify({"code": 500, "message": "Title and url are required"}), 200
 
     new_wedding_music = WeddingMusic(
         title=title,
@@ -56,17 +56,7 @@ def get_wedding_photo_wall_list():
             query = query.filter(WeddingPhotoWall.title.ilike(f"%{keyword}%"))
 
         photos = query.paginate(page=page_number, per_page=page_size, error_out=False)
-        photo_list = [
-            {
-                'id': photo.id,
-                'title': photo.title,
-                'description': photo.description,
-                'image_path': photo.image_path,
-                'created_at': photo.created_at,
-                'updated_at': photo.updated_at
-            }
-            for photo in photos.items
-        ]
+        photo_list = [photo.to_dict() for photo in photos]
         total = photos.total
         return jsonify({"code": 200, "message": "Success", "data": photo_list, "total": total}), 200
     except Exception as e:
@@ -84,17 +74,7 @@ def get_wedding_photo_wall_list_all():
 
         # 获取所有数据，而不是分页
         photos = query.all()
-        photo_list = [
-            {
-                'id': photo.id,
-                'title': photo.title,
-                'description': photo.description,
-                'src': photo.image_path,
-                'created_at': photo.created_at,
-                'updated_at': photo.updated_at
-            }
-            for photo in photos
-        ]
+        photo_list = [photo.to_dict() for photo in photos]
         total = len(photo_list)  # 更新total的计算方式
         return jsonify({"code": 200, "message": "Success", "data": photo_list, "total": total}), 200
     except Exception as e:
@@ -108,15 +88,17 @@ def add_wedding_photo_wall():
         return jsonify({"code": 500, "message": "No input data provided"}), 200
     title = data.get('title')
     description = data.get('description')
-    image_path = data.get('image_path')
+    src = data.get('src')
+    order = data.get('order', 0)
 
-    if not title or not image_path:
-        return jsonify({"code": 500, "message": "Title and image_path are required"}), 200
+    if not title or not src:
+        return jsonify({"code": 500, "message": "Title and src are required"}), 200
 
     new_photo = WeddingPhotoWall(
         title=title,
         description=description,
-        image_path=image_path,
+        src=src,
+        order=order,
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow()
     )
@@ -127,7 +109,7 @@ def add_wedding_photo_wall():
             "id": new_photo.id,
             "title": new_photo.title,
             "description": new_photo.description,
-            "image_path": new_photo.image_path,
+            "src": new_photo.src,
             "created_at": new_photo.created_at,
             "updated_at": new_photo.updated_at
         }}), 200
