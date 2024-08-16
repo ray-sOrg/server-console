@@ -3,7 +3,12 @@ from model.wedding_music import WeddingMusic
 from model.wedding_photo_wall import WeddingPhotoWall
 from datetime import datetime
 from extensions import db
+from config import endpoint, bucket_name
+import oss2
+from oss2.credentials import EnvironmentVariableCredentialsProvider
 
+auth = oss2.ProviderAuth(EnvironmentVariableCredentialsProvider())
+bucket = oss2.Bucket(auth, endpoint, bucket_name)
 
 wedding_api_pb = Blueprint('wedding_api', __name__)
 
@@ -78,6 +83,32 @@ def get_wedding_photo_wall_list_all():
         total = len(photo_list)  # 更新total的计算方式
         return jsonify({"code": 200, "message": "Success", "data": photo_list, "total": total}), 200
     except Exception as e:
+        return jsonify({"code": 500, "message": str(e), "data": {}}), 200
+
+
+@wedding_api_pb.route('/wedding/photo/wall/delete', methods=['POST'])
+def delete_wedding_photo():
+    data = request.get_json()
+    if not data:
+        return jsonify({"code": 500, "message": "No input data provided"}), 200
+    photo_id = data.get('id')
+    if not photo_id:
+        return jsonify({"code": 500, "message": "Missing ID", "data": {}}), 200
+    try:
+        # 查找并删除数据库记录
+        photo = WeddingPhotoWall.query.get(photo_id)
+        if not photo:
+            return jsonify({"code": 500, "message": "Photo not found", "data": {}}), 200
+        # 删除 OSS 中的图片
+        src = photo.src
+        if src:
+            bucket.delete_object(src)
+        # 删除数据库记录
+        db.session.delete(photo)
+        db.session.commit()
+        return jsonify({"code": 200, "message": "Success", "data": {}}), 200
+    except Exception as e:
+        db.session.rollback()  # 发生错误时回滚事务
         return jsonify({"code": 500, "message": str(e), "data": {}}), 200
 
 
