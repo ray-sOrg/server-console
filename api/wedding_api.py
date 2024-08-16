@@ -51,12 +51,12 @@ def get_wedding_photo_wall_list():
     keyword = request.args.get('keyword', '', type=str)
 
     try:
-        query = WeddingPhotoWall.query.order_by(WeddingPhotoWall.created_at.desc())
+        query = WeddingPhotoWall.query.order_by(WeddingPhotoWall.order.desc(), WeddingPhotoWall.created_at.desc())
         if keyword:
             query = query.filter(WeddingPhotoWall.title.ilike(f"%{keyword}%"))
 
         photos = query.paginate(page=page_number, per_page=page_size, error_out=False)
-        photo_list = [photo.to_dict() for photo in photos]
+        photo_list = [photo.to_dict() for photo in photos.items]  # 使用 photos.items
         total = photos.total
         return jsonify({"code": 200, "message": "Success", "data": photo_list, "total": total}), 200
     except Exception as e:
@@ -68,7 +68,7 @@ def get_wedding_photo_wall_list_all():
     keyword = request.args.get('keyword', '', type=str)
 
     try:
-        query = WeddingPhotoWall.query.order_by(WeddingPhotoWall.created_at.desc())
+        query = WeddingPhotoWall.query.order_by(WeddingPhotoWall.order.desc(), WeddingPhotoWall.created_at.desc())
         if keyword:
             query = query.filter(WeddingPhotoWall.title.ilike(f"%{keyword}%"))
 
