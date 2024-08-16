@@ -4,6 +4,7 @@ from model.wedding_photo_wall import WeddingPhotoWall
 from datetime import datetime
 from extensions import db
 from config import endpoint, bucket_name
+import os
 import oss2
 from oss2.credentials import EnvironmentVariableCredentialsProvider
 
@@ -99,6 +100,10 @@ def delete_wedding_photo():
         # 删除 OSS 中的图片
         src = photo.src
         if src:
+            access_key_id = os.environ.get('OSS_ACCESS_KEY_ID')
+            access_key_secret = os.environ.get('OSS_ACCESS_KEY_SECRET')
+            print(f'Access Key ID: {access_key_id}')
+            print(f'Access Key Secret: {access_key_secret}')
             auth = oss2.ProviderAuth(EnvironmentVariableCredentialsProvider())
             bucket = oss2.Bucket(auth, endpoint, bucket_name)
             bucket.delete_object(src)
