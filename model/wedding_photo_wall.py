@@ -15,3 +15,22 @@ class WeddingPhotoWall(db.Model):
     def __repr__(self):
         return f'<PhotoWall id={self.id} title={self.title} created_at={self.created_at}>'
 
+    def __init__(self, title, description, src, order, created_at, updated_at):
+        self.title = title
+        self.description = description
+        self.src = src
+        self.order = order
+        self.created_at = created_at
+        self.updated_at = updated_at
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'title': self.title,
+            'description': self.description,
+            'src': self.src,
+            'order': self.order,
+            'created_at': self.created_at,
+            'updated_at': self.updated_at
+        }
+
