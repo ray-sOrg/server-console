@@ -7,9 +7,6 @@ from config import endpoint, bucket_name
 import oss2
 from oss2.credentials import EnvironmentVariableCredentialsProvider
 
-auth = oss2.ProviderAuth(EnvironmentVariableCredentialsProvider())
-bucket = oss2.Bucket(auth, endpoint, bucket_name)
-
 wedding_api_pb = Blueprint('wedding_api', __name__)
 
 
@@ -102,6 +99,8 @@ def delete_wedding_photo():
         # 删除 OSS 中的图片
         src = photo.src
         if src:
+            auth = oss2.ProviderAuth(EnvironmentVariableCredentialsProvider())
+            bucket = oss2.Bucket(auth, endpoint, bucket_name)
             bucket.delete_object(src)
         # 删除数据库记录
         db.session.delete(photo)
