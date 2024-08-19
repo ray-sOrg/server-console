@@ -158,3 +158,40 @@ def add_wedding_photo_wall():
     except Exception as e:
         db.session.rollback()
         return jsonify({"code": 500, "message": str(e)}), 200
+
+
+@wedding_api_pb.route('/wedding/photo/wall/edit', methods=['POST'])
+def edit_wedding_photo_wall():
+    data = request.get_json()
+    id = data.get('id')
+    if not id:
+        return jsonify({"code": 500, "message": "No input id provided"}), 200
+
+    # 查找要修改的记录
+    photo = WeddingPhotoWall.query.get(id)
+    if not photo:
+        return jsonify({"code": 404, "message": "Photo not found"}), 200
+
+    # 更新字段值
+    photo.title = data.get('title', photo.title)
+    photo.description = data.get('description', photo.description)
+    photo.src = data.get('src', photo.src)
+    photo.order = data.get('order', photo.order)
+    photo.is_show = data.get('isShow', photo.is_show)
+    photo.updated_at = datetime.utcnow()  # 更新修改时间
+
+    try:
+        db.session.commit()  # 提交更改
+        return jsonify({"code": 200, "message": "Photo updated successfully", "data": {
+            "id": photo.id,
+            "title": photo.title,
+            "description": photo.description,
+            "src": photo.src,
+            "order": photo.order,
+            "is_show": photo.is_show,
+            "created_at": photo.created_at,
+            "updated_at": photo.updated_at
+        }}), 200
+    except Exception as e:
+        db.session.rollback()  # 发生异常时回滚
+        return jsonify({"code": 500, "message": str(e)}), 200
