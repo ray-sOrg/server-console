@@ -54,7 +54,7 @@ def get_wedding_photo_wall_list():
     keyword = request.args.get('keyword', '', type=str)
 
     try:
-        query = WeddingPhotoWall.query.order_by(WeddingPhotoWall.order.desc(), WeddingPhotoWall.created_at.desc())
+        query = WeddingPhotoWall.query.filter(WeddingPhotoWall.is_show == True).order_by(WeddingPhotoWall.order.desc(), WeddingPhotoWall.created_at.desc())
         if keyword:
             query = query.filter(WeddingPhotoWall.title.ilike(f"%{keyword}%"))
 
@@ -71,7 +71,11 @@ def get_wedding_photo_wall_list_all():
     keyword = request.args.get('keyword', '', type=str)
 
     try:
-        query = WeddingPhotoWall.query.order_by(WeddingPhotoWall.order.desc(), WeddingPhotoWall.created_at.desc())
+        # 初始查询，过滤掉 is_show 为 False 的数据
+        query = WeddingPhotoWall.query.filter(WeddingPhotoWall.is_show == True).order_by(WeddingPhotoWall.order.desc(),
+                                                                                         WeddingPhotoWall.created_at.desc())
+
+        # 如果提供了 keyword，则进一步过滤
         if keyword:
             query = query.filter(WeddingPhotoWall.title.ilike(f"%{keyword}%"))
 
