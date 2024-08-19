@@ -129,6 +129,7 @@ def add_wedding_photo_wall():
     description = data.get('description')
     src = data.get('src')
     order = data.get('order', 0)
+    is_show = data.get('isShow', True)
 
     if not title or not src:
         return jsonify({"code": 500, "message": "Title and src are required"}), 200
@@ -138,6 +139,7 @@ def add_wedding_photo_wall():
         description=description,
         src=src,
         order=order,
+        is_show=is_show,
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow()
     )
@@ -149,6 +151,7 @@ def add_wedding_photo_wall():
             "title": new_photo.title,
             "description": new_photo.description,
             "src": new_photo.src,
+            "is_show": new_photo.is_show,
             "created_at": new_photo.created_at,
             "updated_at": new_photo.updated_at
         }}), 200
