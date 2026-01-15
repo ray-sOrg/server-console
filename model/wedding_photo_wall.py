@@ -5,8 +5,8 @@ from datetime import datetime
 class WeddingPhotoWall(db.Model):
     __tablename__ = 'wedding_photo_wall'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    title = db.Column(db.Unicode(255), nullable=False)
-    description = db.Column(db.UnicodeText, nullable=True)
+    title = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text, nullable=True)
     src = db.Column(db.String(255), nullable=False)
     order = db.Column(db.Integer, nullable=True)
     is_show = db.Column(db.Boolean, default=True, nullable=True)

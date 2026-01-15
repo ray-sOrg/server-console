@@ -1,23 +1,21 @@
 from datetime import timedelta
 import os
 
-DIALECT = 'mysql'
-DRIVER = 'pymysql'
-USERNAME = os.getenv('DB_USERNAME', 'root')
-PASSWORD = os.getenv('DB_PASSWORD', '')
-HOST = os.getenv('DB_HOST', '127.0.0.1')
-PORT = os.getenv('DB_PORT', '3306')
-DATABASE = os.getenv('DB_NAME', 'ray')
-SQLALCHEMY_DATABASE_URI = "{}+{}://{}:{}@{}:{}/{}?charset=utf8".format(DIALECT, DRIVER, USERNAME, PASSWORD, HOST, PORT,
-                                                                       DATABASE)
+# Supabase PostgreSQL 配置
+# Supabase 连接格式: postgresql://postgres:[password]@[host]:[port]/[database]
+SQLALCHEMY_DATABASE_URI = os.getenv(
+    'DATABASE_URL',
+    'postgresql://postgres:password@localhost:5432/postgres'
+)
+
 JWT_TOKEN_LOCATION = ["cookies"]
 JWT_COOKIE_SECURE = False
 JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'change-this-to-a-strong-secret-key')
 JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=30)
 JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=7)
 
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
-CELERY_BROKER_URL = 'redis://localhost:6379/0'
+CELERY_RESULT_BACKEND = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+CELERY_BROKER_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 
 # OSS 配置 - 从环境变量读取
 access_key_id = os.getenv('OSS_ACCESS_KEY_ID', '')

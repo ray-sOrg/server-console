@@ -3,7 +3,7 @@ SQLAlchemy
 requests
 flask_cors
 flask_sqlalchemy
-pymysql
+psycopg2-binary
 Flask-JWT-Extended
 oss2
 python-dotenv

@@ -4,6 +4,7 @@
 # 项目名称: server-console
 # 容器端口: 5000
 # 健康检查: /health
+# 数据库: Supabase PostgreSQL
 # ========================================
 
 apiVersion: apps/v1
@@ -35,32 +36,12 @@ spec:
           ports:
             - containerPort: 5000
           env:
-            # 数据库配置
-            - name: DB_USERNAME
+            # Supabase 数据库配置
+            - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
                   name: server-console-secret
-                  key: DB_USERNAME
-            - name: DB_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: server-console-secret
-                  key: DB_PASSWORD
-            - name: DB_HOST
-              valueFrom:
-                secretKeyRef:
-                  name: server-console-secret
-                  key: DB_HOST
-            - name: DB_PORT
-              valueFrom:
-                secretKeyRef:
-                  name: server-console-secret
-                  key: DB_PORT
-            - name: DB_NAME
-              valueFrom:
-                secretKeyRef:
-                  name: server-console-secret
-                  key: DB_NAME
+                  key: DATABASE_URL
             # JWT 配置
             - name: JWT_SECRET_KEY
               valueFrom:

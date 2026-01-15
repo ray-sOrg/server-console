@@ -141,11 +141,7 @@ jobs:
             namespace: ${{ env.K8S_NAMESPACE }}
           type: Opaque
           stringData:
-            DB_USERNAME: "${{ secrets.DB_USERNAME }}"
-            DB_PASSWORD: "${{ secrets.DB_PASSWORD }}"
-            DB_HOST: "${{ secrets.DB_HOST }}"
-            DB_PORT: "${{ secrets.DB_PORT }}"
-            DB_NAME: "${{ secrets.DB_NAME }}"
+            DATABASE_URL: "${{ secrets.DATABASE_URL }}"
             JWT_SECRET_KEY: "${{ secrets.JWT_SECRET_KEY }}"
             OSS_ACCESS_KEY_ID: "${{ secrets.OSS_ACCESS_KEY_ID }}"
             OSS_ACCESS_KEY_SECRET: "${{ secrets.OSS_ACCESS_KEY_SECRET }}"
