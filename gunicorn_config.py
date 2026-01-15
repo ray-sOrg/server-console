@@ -1,20 +1,25 @@
 import multiprocessing
+import os
 
-# 绑定的 IP 地址和端口号
-bind = "127.0.0.1:5000"
+# 绑定的 IP 地址和端口号（容器环境使用 0.0.0.0）
+bind = "0.0.0.0:5000"
 
-# 工作进程数量（根据服务器的 CPU 核心数来调整）
-workers = multiprocessing.cpu_count() * 2 + 1
+# 工作进程数量
+workers = int(os.getenv("GUNICORN_WORKERS", multiprocessing.cpu_count() * 2 + 1))
 
 # 每个工作进程的线程数
-threads = 2
+threads = int(os.getenv("GUNICORN_THREADS", 2))
 
-# 服务器日志文件路径
-accesslog = "/var/log/gunicorn/access.log"
-errorlog = "/var/log/gunicorn/error.log"
+# 日志输出到 stdout/stderr（容器环境最佳实践）
+accesslog = "-"
+errorlog = "-"
 
 # 设置日志记录级别
-loglevel = "info"
+loglevel = os.getenv("LOG_LEVEL", "info")
 
-# 是否在每次请求后重启工作进程
-reload = True
+# 生产环境不自动重载
+reload = False
+
+# 超时时间
+timeout = 120
+keepalive = 5

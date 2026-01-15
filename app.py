@@ -51,5 +51,12 @@ register_api_blueprints(app)
 # 构建celery
 celery = make_celery(app)
 
+
+@app.route('/health')
+def health_check():
+    """健康检查端点，用于 Kubernetes liveness/readiness probe"""
+    return {'status': 'healthy', 'service': 'server-console'}, 200
+
+
 if __name__ == '__main__':
     app.run()

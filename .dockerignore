@@ -1,0 +1,42 @@
+# --- 基础忽略 ---
+.git
+.gitignore
+.github
+Dockerfile
+.dockerignore
+README.md
+LICENSE
+.claude
+
+# --- 环境配置文件 ---
+.env
+.env.*
+*.local
+
+# --- Python 构建输出 ---
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info
+dist
+build
+*.log
+*.tmp
+
+# --- 依赖缓存 ---
+venv/
+env/
+my_env/
+*.whl
+
+# --- 编辑器/系统文件 ---
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+*.swp
+*.swo

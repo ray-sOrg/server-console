@@ -1,29 +1,203 @@
-name: Deploy to Server
+name: 🚀 Build & Deploy to Production
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+
+# ========================================
+# 🔧 项目配置变量
+# ========================================
+env:
+  # 项目基本信息
+  PROJECT_NAME: server-console
+  GITHUB_REPO: ray-sOrg/server-console
+
+  # 腾讯云容器镜像服务 TCR 配置
+  TCR_REGISTRY: ccr.ccs.tencentyun.com
+  TCR_NAMESPACE: ray321
+
+  # Kubernetes 配置
+  K8S_NAMESPACE: default
+  K8S_DEPLOYMENT_FILE: deployment.yaml
+
+  # 健康检查配置
+  HEALTH_CHECK_PATH: /health
+  CONTAINER_PORT: 5000
+
+  # 部署超时时间（秒）
+  ROLLOUT_TIMEOUT: 180
 
 jobs:
-  deploy:
+  # =============================
+  # 1️⃣ 构建镜像并推送到腾讯 TCR
+  # =============================
+  build:
+    name: 🛠️ Build & Push Docker Image
     runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+      tag: ${{ steps.meta.outputs.tag }}
 
-      - name: Copy SSH key
-        uses: appleboy/ssh-action@master
+    steps:
+      # 拉取仓库代码
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
-          key: ${{ secrets.SSH_KEY }}
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.USER_NAME }}
-          script: |
-            cd /var/www/server/ray-flask
-            git pull origin main
-            # 激活虚拟环境并重新安装依赖项
-            source my_venv/bin/activate
-            pip install -r requirements.txt
-            # 重启 Gunicorn 服务器
-            sudo systemctl restart ray_flask
+          repository: ${{ env.GITHUB_REPO }}
+          fetch-depth: 0
+
+      # 设置 Docker Buildx
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 登录腾讯云容器镜像服务 TCR
+      - name: Login to Tencent Cloud Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.TCR_REGISTRY }}
+          username: ${{ secrets.TCR_USERNAME }}
+          password: ${{ secrets.TCR_PASSWORD }}
+
+      # 生成镜像标签
+      - name: Generate image metadata
+        id: meta
+        run: |
+          IMAGE_NAME=${{ env.TCR_REGISTRY }}/${{ env.TCR_NAMESPACE }}/${{ env.PROJECT_NAME }}
+          IMAGE_TAG="build-${GITHUB_RUN_NUMBER}-$(git rev-parse --short HEAD)"
+
+          echo "image=$IMAGE_NAME" >> $GITHUB_OUTPUT
+          echo "tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+          echo "🏷️  镜像标签: $IMAGE_TAG"
+          echo "📤 推送地址: $IMAGE_NAME:$IMAGE_TAG"
+
+      # 构建并推送镜像
+      - name: Build & Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+  # =============================
+  # 2️⃣ 部署到 Kubernetes 集群
+  # =============================
+  deploy:
+    name: 🚀 Deploy to Kubernetes
+    runs-on: ubuntu-latest
+    needs: build
+    environment: production
+
+    steps:
+      # 拉取仓库代码
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.GITHUB_REPO }}
+          fetch-depth: 0
+
+      # 安装 kubectl
+      - name: Install kubectl
+        run: |
+          if ! command -v kubectl &> /dev/null; then
+            echo "kubectl not found, installing..."
+            curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+            chmod +x kubectl
+            mv kubectl /usr/local/bin/
+          else
+            echo "kubectl is already installed"
+          fi
+
+      # 配置 K8s 访问
+      - name: Configure cluster access
+        env:
+          KUBECONFIG_CONTENT: ${{ secrets.KUBECONFIG }}
+        run: |
+          mkdir -p $HOME/.kube
+          echo "$KUBECONFIG_CONTENT" > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+          echo "KUBECONFIG=$HOME/.kube/config" >> $GITHUB_ENV
+
+          echo "📍 集群 API 地址："
+          kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}'
+          echo ""
+
+          echo "🔍 验证集群连接..."
+          kubectl cluster-info --request-timeout=10s
+          echo "✅ K8s 集群连接成功"
+
+      # 同步应用 Secrets 到 Kubernetes
+      - name: Sync Application Secrets to Kubernetes
+        run: |
+          cat <<EOF_SECRET | kubectl apply -f -
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: server-console-secret
+            namespace: ${{ env.K8S_NAMESPACE }}
+          type: Opaque
+          stringData:
+            DB_USERNAME: "${{ secrets.DB_USERNAME }}"
+            DB_PASSWORD: "${{ secrets.DB_PASSWORD }}"
+            DB_HOST: "${{ secrets.DB_HOST }}"
+            DB_PORT: "${{ secrets.DB_PORT }}"
+            DB_NAME: "${{ secrets.DB_NAME }}"
+            JWT_SECRET_KEY: "${{ secrets.JWT_SECRET_KEY }}"
+            OSS_ACCESS_KEY_ID: "${{ secrets.OSS_ACCESS_KEY_ID }}"
+            OSS_ACCESS_KEY_SECRET: "${{ secrets.OSS_ACCESS_KEY_SECRET }}"
+            OSS_BUCKET_NAME: "${{ secrets.OSS_BUCKET_NAME }}"
+          EOF_SECRET
+          echo "✅ 应用 Secrets 已同步"
+
+      # 创建腾讯云 TCR 镜像拉取凭证
+      - name: Create Tencent TCR Pull Secret
+        run: |
+          kubectl delete secret tencent-tcr-secret -n ${{ env.K8S_NAMESPACE }} --ignore-not-found=true
+
+          kubectl create secret docker-registry tencent-tcr-secret \
+            --docker-server=${{ env.TCR_REGISTRY }} \
+            --docker-username="${{ secrets.TCR_USERNAME }}" \
+            --docker-password="${{ secrets.TCR_PASSWORD }}" \
+            --namespace=${{ env.K8S_NAMESPACE }}
+
+          echo "✅ 腾讯云 TCR 镜像拉取凭证已创建"
+
+      # 替换镜像并部署
+      - name: Apply deployment
+        run: |
+          IMAGE=${{ needs.build.outputs.image }}
+          TAG=${{ needs.build.outputs.tag }}
+
+          sed -i "s|__IMAGE_NAME__|$IMAGE|g" ${{ env.K8S_DEPLOYMENT_FILE }}
+          sed -i "s|__IMAGE_TAG__|$TAG|g" ${{ env.K8S_DEPLOYMENT_FILE }}
+
+          echo "🚀 部署版本: $IMAGE:$TAG"
+          kubectl apply -f ${{ env.K8S_DEPLOYMENT_FILE }}
+
+      # 检查部署状态并自动回滚
+      - name: Verify rollout & rollback if failed
+        run: |
+          DEPLOY_NAME=${{ env.PROJECT_NAME }}-deployment
+          set -e
+          if kubectl rollout status deployment/$DEPLOY_NAME --timeout=${{ env.ROLLOUT_TIMEOUT }}s; then
+            echo "✅ 部署成功"
+          else
+            echo "❌ 部署失败，开始回滚..."
+            kubectl rollout undo deployment/$DEPLOY_NAME
+            echo "🩹 已回滚到上一个稳定版本"
+            exit 1
+          fi
+
+      # 部署完成通知
+      - name: Notify Deployment Result
+        if: always()
+        run: |
+          STATUS=${{ job.status }}
+          IMAGE=${{ needs.build.outputs.image }}
+          TAG=${{ needs.build.outputs.tag }}
+          echo "📢 部署状态: $STATUS"
+          echo "📦 镜像: $IMAGE:$TAG"
