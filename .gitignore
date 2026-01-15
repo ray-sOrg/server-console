@@ -19,6 +19,7 @@ logs/
 # Configuration files with sensitive information
 config.ini
 secrets.json
+.env
 
 # Other
 __pycache__/

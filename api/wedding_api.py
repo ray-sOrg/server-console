@@ -102,10 +102,6 @@ def delete_wedding_photo():
         # 删除 OSS 中的图片
         src = photo.src
         if src:
-            access_key_id = os.environ.get('OSS_ACCESS_KEY_ID')
-            access_key_secret = os.environ.get('OSS_ACCESS_KEY_SECRET')
-            print(f'Access Key ID: {access_key_id}')
-            print(f'Access Key Secret: {access_key_secret}')
             auth = oss2.ProviderAuth(EnvironmentVariableCredentialsProvider())
             bucket = oss2.Bucket(auth, endpoint, bucket_name)
             bucket.delete_object(src)

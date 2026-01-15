@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required
 from model.image import Image
+from config import access_key_id, access_key_secret, bucket_name
 import base64
 import json
 import hmac
@@ -9,9 +10,6 @@ import time
 
 oss_api_pb = Blueprint('oss_api', __name__)
 
-access_key_id = "LTAI5tQtaWvad7oobHnUZZqW"
-access_key_secret = "oWjbVLO9HRl0vZb1lsYxoHqWxjM0NF"
-bucket_name = "ray321"
 upload_path = "wedding/music/"
 # region = "oss-cn-chengdu-internal"
 region = "oss-cn-chengdu"
