@@ -4,8 +4,8 @@
 -- 在 Supabase SQL Editor 中执行此脚本
 -- ========================================
 
--- 1. 用户表
-CREATE TABLE IF NOT EXISTS user (
+-- 1. 用户表 (user 是保留字，使用 app_user)
+CREATE TABLE IF NOT EXISTS app_user (
     id SERIAL PRIMARY KEY,
     uid VARCHAR(36) UNIQUE NOT NULL,
     username VARCHAR(100) UNIQUE NOT NULL,
@@ -50,9 +50,9 @@ CREATE TABLE IF NOT EXISTS image (
 -- 索引
 -- ========================================
 
--- user 表索引
-CREATE INDEX IF NOT EXISTS idx_user_uid ON user(uid);
-CREATE INDEX IF NOT EXISTS idx_user_username ON user(username);
+-- app_user 表索引
+CREATE INDEX IF NOT EXISTS idx_app_user_uid ON app_user(uid);
+CREATE INDEX IF NOT EXISTS idx_app_user_username ON app_user(username);
 
 -- wedding_photo_wall 表索引
 CREATE INDEX IF NOT EXISTS idx_wedding_photo_wall_order ON wedding_photo_wall(order_num);
@@ -88,7 +88,7 @@ CREATE TRIGGER update_wedding_photo_wall_updated_at
 
 -- 创建默认管理员用户（密码需要使用 bcrypt/hash 生成）
 -- 密码: admin123 (示例，请替换为实际 hash)
-INSERT INTO user (uid, username, password, role)
+INSERT INTO app_user (uid, username, password, role)
 VALUES (
     gen_random_uuid()::text,
     'admin',
@@ -101,7 +101,7 @@ VALUES (
 -- ========================================
 
 -- 如果需要启用 RLS，取消以下注释
--- ALTER TABLE user ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE app_user ENABLE ROW LEVEL SECURITY;
 -- ALTER TABLE wedding_photo_wall ENABLE ROW LEVEL SECURITY;
 -- ALTER TABLE wedding_music ENABLE ROW LEVEL SECURITY;
 -- ALTER TABLE image ENABLE ROW LEVEL SECURITY;
