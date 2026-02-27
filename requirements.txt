@@ -9,3 +9,4 @@ oss2
 python-dotenv
 celery
 redis
+gunicorn
