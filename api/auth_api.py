@@ -2,7 +2,7 @@ from flask import Blueprint, jsonify, request, make_response
 from flask_jwt_extended import (create_access_token, unset_jwt_cookies, set_access_cookies, set_refresh_cookies,
                                 create_refresh_token, jwt_required, get_jwt_identity)
 from model.user import User
-from werkzeug.security import check_password_hash
+import bcrypt
 
 auth_api_pb = Blueprint('auth_api', __name__)
 
@@ -21,8 +21,12 @@ def login():
         return jsonify({"code": 500, "data": {}, "message": "未找到用户"}), 200
 
     # 用户存在但密码不正确的情况
-    if not check_password_hash(user.password, password):
-        return jsonify({"code": 500, "data": {}, "message": "密码错误"}), 200
+    try:
+        password_hash = user.password.encode('utf-8') if isinstance(user.password, str) else user.password
+        if not bcrypt.checkpw(password.encode('utf-8'), password_hash):
+            return jsonify({"code": 500, "data": {}, "message": "密码错误"}), 200
+    except Exception as e:
+        return jsonify({"code": 500, "data": {}, "message": "密码验证失败"}), 200
 
     # 创建访问令牌
     access_token = create_access_token(identity=user.username)

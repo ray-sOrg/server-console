@@ -11,5 +11,10 @@ def register_api_blueprints(app):
             module = __import__(f'api.{module_name}', fromlist=[module_name])
             # 获取蓝图对象并注册
             blueprint = getattr(module, f'{module_name}_pb')
-            app.register_blueprint(blueprint)
+            
+            # 餐馆相关 API 添加 /chuan-dai 前缀
+            if module_name == 'dish_api':
+                app.register_blueprint(blueprint, url_prefix='/chuan-dai')
+            else:
+                app.register_blueprint(blueprint)
 

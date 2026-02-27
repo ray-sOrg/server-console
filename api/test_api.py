@@ -1,8 +1,18 @@
 from flask import Blueprint, jsonify, current_app
 from flask_jwt_extended import jwt_required
+from model.user import User
 import os
 
 test_api_pb = Blueprint('test_api', __name__)
+
+
+@test_api_pb.route('/test/db')
+def test_db():
+    users = User.query.all()
+    return jsonify({"code": 200, "message": "Success", "data": {
+        "count": len(users),
+        "users": [{"username": u.username, "role": u.role} for u in users]
+    }}), 200
 
 
 @test_api_pb.route('/test/flask_env', methods=["GET"])

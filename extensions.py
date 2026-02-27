@@ -5,3 +5,6 @@ from flask_jwt_extended import JWTManager
 
 db = SQLAlchemy()
 jwt = JWTManager()
+
+# 导入模型以注册到 SQLAlchemy
+from model.user import User
