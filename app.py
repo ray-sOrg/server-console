@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from flask import Flask
 from flask_cors import CORS
 from extensions import db, jwt
@@ -5,15 +8,11 @@ from flask_jwt_extended import create_access_token, get_jwt, get_jwt_identity, s
 from utils.register_api_blueprints import register_api_blueprints
 from utils.db_utils import create_missing_tables
 from utils.jwt_errors import register_jwt_errors
-from dotenv import load_dotenv
 from mycelery import make_celery
 import config
 from datetime import datetime
 from datetime import timedelta
 from datetime import timezone
-
-
-load_dotenv()
 
 app = Flask(__name__)
 

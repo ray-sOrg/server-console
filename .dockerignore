@@ -1,42 +1,57 @@
-# --- 基础忽略 ---
+# =================== Git & CI/CD ===================
 .git
 .gitignore
 .github
+
+# =================== Docker ===================
 Dockerfile
 .dockerignore
+docker-compose*.yml
+
+# =================== Kubernetes ===================
+deployment.yaml
+*.yaml
+!gunicorn_config.py
+
+# =================== Documentation ===================
 README.md
 LICENSE
+CLAUDE.md
 .claude
+docs/
 
-# --- 环境配置文件 ---
+# =================== Environment ===================
 .env
 .env.*
 *.local
 
-# --- Python 构建输出 ---
-__pycache__
-*.pyc
-*.pyo
-*.pyd
+# =================== Python ===================
+__pycache__/
+*.py[cod]
+*$py.class
 .Python
 *.so
 *.egg
-*.egg-info
-dist
-build
-*.log
-*.tmp
-
-# --- 依赖缓存 ---
+*.egg-info/
+dist/
+build/
+*.whl
 venv/
 env/
-my_env/
-*.whl
+.venv/
+.pytest_cache/
+.coverage
+htmlcov/
 
-# --- 编辑器/系统文件 ---
-.vscode
-.idea
+# =================== IDE & OS ===================
+.vscode/
+.idea/
 .DS_Store
 Thumbs.db
 *.swp
 *.swo
+
+# =================== Logs ===================
+logs/
+*.log
+*.tmp

@@ -1,25 +1,47 @@
-# Python virtual environment
+# =================== Python ===================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
 venv/
 env/
-my_env/
+.venv/
+ENV/
 
-# Compiled files
-*.pyc
-*.pyo
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+*.egg
+*.whl
 
-# Temporary files
-.DS_Store
+# Unit test / coverage
+.tox/
+.coverage
+.pytest_cache/
+htmlcov/
+
+# =================== IDE ===================
+.idea/
+.vscode/
 *.swp
 *.swo
 
-# Logs
+# =================== OS ===================
+.DS_Store
+Thumbs.db
+
+# =================== Logs ===================
 logs/
 *.log
 
-# Configuration files with sensitive information
+# =================== Sensitive ===================
+.env
+.env.*
+!.env.example
 config.ini
 secrets.json
-.env
-
-# Other
-__pycache__/
+*.pem
+*.key
