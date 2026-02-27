@@ -8,6 +8,12 @@ SQLALCHEMY_DATABASE_URI = os.getenv(
     'postgresql://postgres:password@localhost:5432/postgres'
 )
 
+# 处理 Supabase PgBouncer 连接
+SQLALCHEMY_ENGINE_OPTIONS = {
+    'pool_pre_ping': True,
+    'pool_recycle': 300,
+}
+
 JWT_TOKEN_LOCATION = ["cookies"]
 JWT_COOKIE_SECURE = False
 JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'change-this-to-a-strong-secret-key')

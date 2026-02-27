@@ -20,6 +20,9 @@ RUN useradd -m -u 1000 appuser
 # 从 builder 阶段复制已安装的包到系统路径
 COPY --from=builder /install /usr/local
 
+# 确保 PATH 包含可执行文件路径
+ENV PATH=/usr/local/bin:$PATH
+
 # 复制应用代码并设置权限
 COPY --chown=appuser:appuser . .
 
