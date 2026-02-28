@@ -33,6 +33,7 @@ spec:
       containers:
         - name: server-console
           image: __IMAGE_NAME__:__IMAGE_TAG__
+          imagePullPolicy: Always
           ports:
             - containerPort: 5000
           env:
