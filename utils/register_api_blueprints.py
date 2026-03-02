@@ -12,9 +12,10 @@ def register_api_blueprints(app):
             # 获取蓝图对象并注册
             blueprint = getattr(module, f'{module_name}_pb')
             
-            # 餐馆相关 API 添加 /api/chuan-dai 前缀
+            # 餐馆相关 API 添加 /chuan-dai 前缀
             if module_name == 'dish_api':
-                app.register_blueprint(blueprint, url_prefix='/api/chuan-dai')
+                app.register_blueprint(blueprint, url_prefix='/chuan-dai')
             else:
-                app.register_blueprint(blueprint, url_prefix='/api')
+                # 其他 API 无前缀，路由如 /login, /users
+                app.register_blueprint(blueprint)
 
