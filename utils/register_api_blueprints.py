@@ -16,5 +16,5 @@ def register_api_blueprints(app):
             if module_name == 'dish_api':
                 app.register_blueprint(blueprint, url_prefix='/chuan-dai')
             else:
-                app.register_blueprint(blueprint)
+                app.register_blueprint(blueprint, url_prefix='/api')
 
