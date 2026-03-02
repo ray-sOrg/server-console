@@ -73,5 +73,23 @@ jobs:
         run: |
           echo "✅ 镜像构建完成"
           echo "📦 ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}"
-          echo ""
-          echo "在 Kuboard 中手动更新镜像版本即可部署"
+
+      # 自动部署到 K8s（仅 main 分支）
+      - name: Deploy to K8s
+        if: github.ref == 'refs/heads/main'
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG }}" > ~/.kube/config
+          chmod 600 ~/.kube/config
+          
+          # 替换镜像占位符
+          sed -i "s|__IMAGE_NAME__|${{ steps.meta.outputs.image }}|g" deployment.yaml
+          sed -i "s|__IMAGE_TAG__|${{ steps.meta.outputs.tag }}|g" deployment.yaml
+          
+          # 应用配置
+          kubectl apply -f deployment.yaml
+          kubectl rollout restart deployment/${{ env.PROJECT_NAME }}-deployment
+          
+          # 等待部署完成
+          kubectl rollout status deployment/${{ env.PROJECT_NAME }}-deployment --timeout=120s
+          echo "✅ 部署完成"
