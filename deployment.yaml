@@ -37,12 +37,18 @@ spec:
           ports:
             - containerPort: 5000
           env:
-            # Supabase 数据库配置
+            # Supabase 数据库配置 - 综合后台（南亚）
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
                   name: server-console-secret
                   key: DATABASE_URL
+            # Supabase 数据库配置 - 餐馆系统（东北亚）
+            - name: DATABASE_URL_RESTAURANT
+              valueFrom:
+                secretKeyRef:
+                  name: server-console-secret
+                  key: DATABASE_URL_RESTAURANT
             # JWT 配置
             - name: JWT_SECRET_KEY
               valueFrom:
