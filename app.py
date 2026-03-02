@@ -16,7 +16,11 @@ from datetime import timezone
 
 app = Flask(__name__)
 
-CORS(app)
+# CORS 配置：支持跨域携带 Cookie
+CORS(app, supports_credentials=True, origins=[
+    "https://console.tt829.cn",
+    "http://localhost:5173",  # 本地开发
+])
 app.config.from_object(config)
 
 db.init_app(app)
