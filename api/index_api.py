@@ -5,13 +5,13 @@ import os
 index_api_pb = Blueprint('index_api', __name__)
 
 
-@index_api_pb.route('/logger')
+@index_api_pb.route('/common/logger')
 def logger():
     current_app.logger.debug("FLASK_ENV: %s", os.environ.get('FLASK_ENV'))
     return "Hello, Logger!"
 
 
-@index_api_pb.route('/index')
+@index_api_pb.route('/common/index')
 @jwt_required()
 def index():
     response = {

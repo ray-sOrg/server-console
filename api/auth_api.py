@@ -7,7 +7,7 @@ import bcrypt
 auth_api_pb = Blueprint('auth_api', __name__)
 
 
-@auth_api_pb.route('/login', methods=['POST'])
+@auth_api_pb.route('/auth/login', methods=['POST'])
 def login():
     data = request.json
     username = data.get('username')
@@ -41,7 +41,7 @@ def login():
     return response
 
 
-@auth_api_pb.route("/logout", methods=["POST"])
+@auth_api_pb.route("/auth/logout", methods=["POST"])
 def logout():
     response = jsonify({"code": 200, "message": "logout successful", "data": {}})
     unset_jwt_cookies(response)
@@ -49,7 +49,7 @@ def logout():
 
 
 # 使用 `refresh=True` 参数，确保只有刷新令牌可以访问这个路由
-@auth_api_pb.route("/token/refresh", methods=["POST"])
+@auth_api_pb.route("/auth/token/refresh", methods=["POST"])
 @jwt_required(refresh=True)
 def refresh():
     identity = get_jwt_identity()
