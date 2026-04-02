@@ -50,3 +50,5 @@ flask db upgrade
 - OSS uses Alibaba Cloud Chengdu region
 - Async tasks via Celery for image sync
 - Supabase for PostgreSQL database
+
+## CI/CD Test
