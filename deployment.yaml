@@ -55,22 +55,6 @@ spec:
                 secretKeyRef:
                   name: server-console-secret
                   key: JWT_SECRET_KEY
-            # OSS 配置
-            - name: OSS_ACCESS_KEY_ID
-              valueFrom:
-                secretKeyRef:
-                  name: server-console-secret
-                  key: OSS_ACCESS_KEY_ID
-            - name: OSS_ACCESS_KEY_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: server-console-secret
-                  key: OSS_ACCESS_KEY_SECRET
-            - name: OSS_BUCKET_NAME
-              valueFrom:
-                secretKeyRef:
-                  name: server-console-secret
-                  key: OSS_BUCKET_NAME
             # Flask 环境
             - name: FLASK_ENV
               value: "production"
