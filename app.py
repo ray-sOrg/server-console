@@ -19,7 +19,9 @@ app = Flask(__name__)
 # CORS 配置：支持跨域携带 Cookie
 CORS(app, supports_credentials=True, origins=[
     "https://console.tt829.cn",
+    "https://weight.tt829.cn",
     "http://localhost:5173",  # 本地开发
+    "http://localhost:4173",  # 体重管理本地开发
 ])
 app.config.from_object(config)
 
