@@ -8,6 +8,7 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     uid = db.Column(db.String(36), unique=True, nullable=False)  # UUID 字段
     username = db.Column(db.String(100), unique=True, nullable=False)
+    display_name = db.Column(db.String(100), nullable=True)
     password = db.Column(db.String(255), nullable=False)
     role = db.Column(db.String(20), nullable=False)  # 'super_admin', 'admin', 'user'
     height_cm = db.Column(db.Integer, nullable=True)

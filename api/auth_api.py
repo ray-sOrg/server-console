@@ -34,6 +34,7 @@ def login():
     user_data = {
         'uuid': user.uid,
         'username': user.username,
+        'displayName': user.display_name,
         'role': user.role,
         'heightCm': user.height_cm,
         'birthDate': user.birth_date.isoformat() if user.birth_date else None,

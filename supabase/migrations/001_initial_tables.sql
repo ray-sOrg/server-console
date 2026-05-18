@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS app_user (
     id SERIAL PRIMARY KEY,
     uid VARCHAR(36) UNIQUE NOT NULL,
     username VARCHAR(100) UNIQUE NOT NULL,
+    display_name VARCHAR(100),
     password VARCHAR(255) NOT NULL,
     role VARCHAR(20) NOT NULL, -- 'super_admin', 'admin', 'user'
     height_cm INTEGER CHECK (height_cm IS NULL OR height_cm BETWEEN 80 AND 250),

@@ -13,6 +13,7 @@ def serialize_user(user):
     return {
         "uuid": user.uid,
         "username": user.username,
+        "displayName": user.display_name,
         "role": user.role,
         "heightCm": user.height_cm,
         "birthDate": user.birth_date.isoformat() if user.birth_date else None,
@@ -113,11 +114,19 @@ def login_info_user():
 @jwt_required()
 def update_profile_user():
     data = request.json or {}
+    display_name = data.get('displayName')
     height_cm = data.get('heightCm')
     birth_date = data.get('birthDate')
 
-    if height_cm is None and birth_date is None:
-        return jsonify({"code": 500, "message": "heightCm or birthDate is required", "data": {}}), 200
+    if display_name is None and height_cm is None and birth_date is None:
+        return jsonify({"code": 500, "message": "displayName, heightCm or birthDate is required", "data": {}}), 200
+
+    if display_name is not None:
+        display_name = str(display_name).strip()
+        if not display_name:
+            return jsonify({"code": 500, "message": "displayName is required", "data": {}}), 200
+        if len(display_name) > 100:
+            return jsonify({"code": 500, "message": "displayName must be 100 characters or less", "data": {}}), 200
 
     if height_cm is not None:
         try:
@@ -141,6 +150,8 @@ def update_profile_user():
         if not user:
             return jsonify({"code": 500, "message": "User not found", "data": {}}), 200
 
+        if display_name is not None:
+            user.display_name = display_name
         if height_cm is not None:
             user.height_cm = height_cm
         if birth_date is not None:
