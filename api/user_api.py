@@ -8,6 +8,16 @@ from werkzeug.security import generate_password_hash
 user_api_pb = Blueprint('user_api', __name__)
 
 
+def serialize_user(user):
+    return {
+        "uuid": user.uid,
+        "username": user.username,
+        "role": user.role,
+        "heightCm": user.height_cm,
+        "create_time": user.create_time
+    }
+
+
 @user_api_pb.route('/user/add', methods=['POST'])
 @jwt_required()
 def add_user():
@@ -92,12 +102,37 @@ def login_info_user():
         if not user:
             return jsonify({"code": 500, "message": "User not found", "data": {}}), 200
         # 构造返回的用户信息
-        user_info = {
-            "uuid": user.uid,
-            "username": user.username,
-            "role": user.role,
-            "create_time": user.create_time
-        }
-        return jsonify({"code": 200, "message": "Success", "data": user_info}), 200
+        return jsonify({"code": 200, "message": "Success", "data": serialize_user(user)}), 200
     except Exception as e:
+        return jsonify({"code": 500, "message": str(e), "data": {}}), 200
+
+
+@user_api_pb.route('/user/profile/update', methods=['POST'])
+@jwt_required()
+def update_profile_user():
+    data = request.json or {}
+    height_cm = data.get('heightCm')
+
+    if height_cm is None:
+        return jsonify({"code": 500, "message": "heightCm is required", "data": {}}), 200
+
+    try:
+        height_cm = int(height_cm)
+    except (TypeError, ValueError):
+        return jsonify({"code": 500, "message": "heightCm must be a number", "data": {}}), 200
+
+    if height_cm < 80 or height_cm > 250:
+        return jsonify({"code": 500, "message": "heightCm must be between 80 and 250", "data": {}}), 200
+
+    try:
+        current_user_identity = get_jwt_identity()
+        user = User.query.filter_by(username=current_user_identity).first()
+        if not user:
+            return jsonify({"code": 500, "message": "User not found", "data": {}}), 200
+
+        user.height_cm = height_cm
+        db.session.commit()
+        return jsonify({"code": 200, "message": "Success", "data": serialize_user(user)}), 200
+    except Exception as e:
+        db.session.rollback()
         return jsonify({"code": 500, "message": str(e), "data": {}}), 200

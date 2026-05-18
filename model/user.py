@@ -10,6 +10,7 @@ class User(db.Model):
     username = db.Column(db.String(100), unique=True, nullable=False)
     password = db.Column(db.String(255), nullable=False)
     role = db.Column(db.String(20), nullable=False)  # 'super_admin', 'admin', 'user'
+    height_cm = db.Column(db.Integer, nullable=True)
     create_time = db.Column(db.DateTime, default=datetime.utcnow)
 
     def __init__(self, **kwargs):

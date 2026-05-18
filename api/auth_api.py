@@ -31,7 +31,13 @@ def login():
     # 创建访问令牌
     access_token = create_access_token(identity=user.username)
     refresh_token = create_refresh_token(identity=user.username)
-    user_data = {'uuid': user.uid, 'username': user.username, 'role': user.role, 'create_time': user.create_time}
+    user_data = {
+        'uuid': user.uid,
+        'username': user.username,
+        'role': user.role,
+        'heightCm': user.height_cm,
+        'create_time': user.create_time
+    }
     response = make_response(jsonify({"code": 200, "message": "Success", "token": access_token,
                                      "refresh_token": refresh_token,"data": user_data}), 200)
 
