@@ -11,6 +11,7 @@ class User(db.Model):
     password = db.Column(db.String(255), nullable=False)
     role = db.Column(db.String(20), nullable=False)  # 'super_admin', 'admin', 'user'
     height_cm = db.Column(db.Integer, nullable=True)
+    birth_date = db.Column(db.Date, nullable=True)
     create_time = db.Column(db.DateTime, default=datetime.utcnow)
 
     def __init__(self, **kwargs):

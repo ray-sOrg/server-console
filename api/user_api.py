@@ -1,4 +1,5 @@
 import time
+from datetime import datetime
 from flask import Blueprint, jsonify, request
 from model.user import User
 from extensions import db
@@ -14,6 +15,7 @@ def serialize_user(user):
         "username": user.username,
         "role": user.role,
         "heightCm": user.height_cm,
+        "birthDate": user.birth_date.isoformat() if user.birth_date else None,
         "create_time": user.create_time
     }
 
@@ -112,17 +114,26 @@ def login_info_user():
 def update_profile_user():
     data = request.json or {}
     height_cm = data.get('heightCm')
+    birth_date = data.get('birthDate')
 
-    if height_cm is None:
-        return jsonify({"code": 500, "message": "heightCm is required", "data": {}}), 200
+    if height_cm is None and birth_date is None:
+        return jsonify({"code": 500, "message": "heightCm or birthDate is required", "data": {}}), 200
 
-    try:
-        height_cm = int(height_cm)
-    except (TypeError, ValueError):
-        return jsonify({"code": 500, "message": "heightCm must be a number", "data": {}}), 200
+    if height_cm is not None:
+        try:
+            height_cm = int(height_cm)
+        except (TypeError, ValueError):
+            return jsonify({"code": 500, "message": "heightCm must be a number", "data": {}}), 200
 
-    if height_cm < 80 or height_cm > 250:
-        return jsonify({"code": 500, "message": "heightCm must be between 80 and 250", "data": {}}), 200
+        if height_cm < 80 or height_cm > 250:
+            return jsonify({"code": 500, "message": "heightCm must be between 80 and 250", "data": {}}), 200
+
+    parsed_birth_date = None
+    if birth_date:
+        try:
+            parsed_birth_date = datetime.strptime(birth_date, '%Y-%m-%d').date()
+        except (TypeError, ValueError):
+            return jsonify({"code": 500, "message": "birthDate must be YYYY-MM-DD", "data": {}}), 200
 
     try:
         current_user_identity = get_jwt_identity()
@@ -130,7 +141,10 @@ def update_profile_user():
         if not user:
             return jsonify({"code": 500, "message": "User not found", "data": {}}), 200
 
-        user.height_cm = height_cm
+        if height_cm is not None:
+            user.height_cm = height_cm
+        if birth_date is not None:
+            user.birth_date = parsed_birth_date
         db.session.commit()
         return jsonify({"code": 200, "message": "Success", "data": serialize_user(user)}), 200
     except Exception as e:

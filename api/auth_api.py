@@ -36,6 +36,7 @@ def login():
         'username': user.username,
         'role': user.role,
         'heightCm': user.height_cm,
+        'birthDate': user.birth_date.isoformat() if user.birth_date else None,
         'create_time': user.create_time
     }
     response = make_response(jsonify({"code": 200, "message": "Success", "token": access_token,
