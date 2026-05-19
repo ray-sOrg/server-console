@@ -5,6 +5,7 @@
 CREATE TABLE IF NOT EXISTS weight_record (
     id SERIAL PRIMARY KEY,
     user_identity VARCHAR(100) NOT NULL,
+    tracked_person_id INTEGER,
     weight NUMERIC(6, 2) NOT NULL,
     record_date DATE NOT NULL,
     body_fat NUMERIC(5, 2),
@@ -15,6 +16,7 @@ CREATE TABLE IF NOT EXISTS weight_record (
 );
 
 CREATE INDEX IF NOT EXISTS idx_weight_record_user_identity ON weight_record(user_identity);
+CREATE INDEX IF NOT EXISTS idx_weight_record_tracked_person_id ON weight_record(tracked_person_id);
 CREATE INDEX IF NOT EXISTS idx_weight_record_record_date ON weight_record(record_date);
 CREATE INDEX IF NOT EXISTS idx_weight_record_user_date ON weight_record(user_identity, record_date DESC);
 

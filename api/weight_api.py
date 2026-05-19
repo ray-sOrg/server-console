@@ -5,6 +5,7 @@ from flask import Blueprint, jsonify, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
 
 from extensions import db
+from model.tracked_person import TrackedPerson
 from model.weight_record import WeightRecord
 
 weight_api_pb = Blueprint('weight_api', __name__)
@@ -32,8 +33,89 @@ def parse_record_date(value):
         raise ValueError('recordDate must be YYYY-MM-DD')
 
 
+def parse_optional_date(value, field_name):
+    if value is None or value == '':
+        return None
+
+    try:
+        return datetime.strptime(value, '%Y-%m-%d').date()
+    except ValueError:
+        raise ValueError(f'{field_name} must be YYYY-MM-DD')
+
+
+def parse_height(value):
+    if value is None or value == '':
+        raise ValueError('heightCm is required')
+    try:
+        height_cm = int(value)
+    except (TypeError, ValueError):
+        raise ValueError('heightCm must be a number')
+    if height_cm < 80 or height_cm > 250:
+        raise ValueError('heightCm must be between 80 and 250')
+    return height_cm
+
+
 def get_current_user_identity():
     return get_jwt_identity()
+
+
+def get_owned_tracked_person(person_id):
+    if person_id is None or person_id == '':
+        return None
+    try:
+        person_id = int(person_id)
+    except (TypeError, ValueError):
+        raise ValueError('trackedPersonId must be a number')
+
+    person = TrackedPerson.query.filter_by(
+        id=person_id,
+        user_identity=get_current_user_identity()
+    ).first()
+    if not person:
+        raise ValueError('trackedPersonId is invalid')
+    return person
+
+
+@weight_api_pb.route('/weight/people', methods=['GET'])
+@jwt_required()
+def get_tracked_people():
+    people = TrackedPerson.query.filter_by(
+        user_identity=get_current_user_identity()
+    ).order_by(TrackedPerson.created_at.asc(), TrackedPerson.id.asc()).all()
+    return jsonify({
+        "code": 200,
+        "message": "Success",
+        "data": [person.to_dict() for person in people],
+        "total": len(people)
+    }), 200
+
+
+@weight_api_pb.route('/weight/person/add', methods=['POST'])
+@jwt_required()
+def add_tracked_person():
+    data = request.get_json() or {}
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({"code": 500, "message": "name is required", "data": {}}), 200
+    if len(name) > 100:
+        return jsonify({"code": 500, "message": "name must be 100 characters or less", "data": {}}), 200
+
+    try:
+        person = TrackedPerson(
+            user_identity=get_current_user_identity(),
+            name=name,
+            height_cm=parse_height(data.get('heightCm')),
+            birth_date=parse_optional_date(data.get('birthDate'), 'birthDate'),
+            relationship=(data.get('relationship') or None)
+        )
+        db.session.add(person)
+        db.session.commit()
+        return jsonify({"code": 200, "message": "Success", "data": person.to_dict()}), 200
+    except ValueError as e:
+        return jsonify({"code": 500, "message": str(e), "data": {}}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"code": 500, "message": str(e), "data": {}}), 200
 
 
 @weight_api_pb.route('/weight/record/add', methods=['POST'])
@@ -42,8 +124,10 @@ def add_weight_record():
     data = request.get_json() or {}
 
     try:
+        tracked_person = get_owned_tracked_person(data.get('trackedPersonId'))
         record = WeightRecord(
             user_identity=get_current_user_identity(),
+            tracked_person_id=tracked_person.id if tracked_person else None,
             weight=parse_decimal(data.get('weight'), 'weight', required=True),
             record_date=parse_record_date(data.get('recordDate')),
             body_fat=parse_decimal(data.get('bodyFat'), 'bodyFat'),
@@ -83,6 +167,9 @@ def edit_weight_record():
             record.weight = parse_decimal(data.get('weight'), 'weight', required=True)
         if 'recordDate' in data:
             record.record_date = parse_record_date(data.get('recordDate'))
+        if 'trackedPersonId' in data:
+            tracked_person = get_owned_tracked_person(data.get('trackedPersonId'))
+            record.tracked_person_id = tracked_person.id if tracked_person else None
         if 'bodyFat' in data:
             record.body_fat = parse_decimal(data.get('bodyFat'), 'bodyFat')
         if 'bmi' in data:
@@ -138,6 +225,10 @@ def get_weight_records():
         query = WeightRecord.query.filter_by(
             user_identity=get_current_user_identity()
         ).order_by(WeightRecord.record_date.desc(), WeightRecord.created_at.desc())
+        tracked_person_id = request.args.get('trackedPersonId')
+        if tracked_person_id:
+            tracked_person = get_owned_tracked_person(tracked_person_id)
+            query = query.filter(WeightRecord.tracked_person_id == tracked_person.id)
 
         if start_date:
             query = query.filter(WeightRecord.record_date >= parse_record_date(start_date))
@@ -167,6 +258,10 @@ def get_all_weight_records():
         query = WeightRecord.query.filter_by(
             user_identity=get_current_user_identity()
         ).order_by(WeightRecord.record_date.asc(), WeightRecord.created_at.asc())
+        tracked_person_id = request.args.get('trackedPersonId')
+        if tracked_person_id:
+            tracked_person = get_owned_tracked_person(tracked_person_id)
+            query = query.filter(WeightRecord.tracked_person_id == tracked_person.id)
 
         if start_date:
             query = query.filter(WeightRecord.record_date >= parse_record_date(start_date))
