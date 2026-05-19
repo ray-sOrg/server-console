@@ -6,6 +6,7 @@ from flask_jwt_extended import get_jwt_identity, jwt_required
 
 from extensions import db
 from model.tracked_person import TrackedPerson
+from model.user import User
 from model.weight_record import WeightRecord
 
 weight_api_pb = Blueprint('weight_api', __name__)
@@ -59,6 +60,11 @@ def get_current_user_identity():
     return get_jwt_identity()
 
 
+def current_user_can_manage_members():
+    user = User.query.filter_by(username=get_current_user_identity()).first()
+    return user and user.role in ('super_admin', 'admin')
+
+
 def get_owned_tracked_person(person_id):
     if person_id is None or person_id == '':
         return None
@@ -93,6 +99,9 @@ def get_tracked_people():
 @weight_api_pb.route('/weight/person/add', methods=['POST'])
 @jwt_required()
 def add_tracked_person():
+    if not current_user_can_manage_members():
+        return jsonify({"code": 403, "message": "No permission to manage family members", "data": {}}), 200
+
     data = request.get_json() or {}
     name = (data.get('name') or '').strip()
     if not name:
