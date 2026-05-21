@@ -7,6 +7,7 @@ from flask_jwt_extended import get_jwt_identity, jwt_required
 from extensions import db
 from model.tracked_person import TrackedPerson
 from model.user import User
+from model.weight_goal import WeightGoal
 from model.weight_record import WeightRecord
 
 weight_api_pb = Blueprint('weight_api', __name__)
@@ -80,6 +81,13 @@ def get_owned_tracked_person(person_id):
     if not person:
         raise ValueError('trackedPersonId is invalid')
     return person
+
+
+def build_goal_query(tracked_person):
+    query = WeightGoal.query.filter_by(user_identity=get_current_user_identity())
+    if tracked_person:
+        return query.filter(WeightGoal.tracked_person_id == tracked_person.id)
+    return query.filter(WeightGoal.tracked_person_id.is_(None))
 
 
 @weight_api_pb.route('/weight/people', methods=['GET'])
@@ -288,6 +296,55 @@ def get_all_weight_records():
         return jsonify({"code": 500, "message": str(e), "data": [], "total": 0}), 200
     except Exception as e:
         return jsonify({"code": 500, "message": str(e), "data": [], "total": 0}), 200
+
+
+@weight_api_pb.route('/weight/goals', methods=['GET'])
+@jwt_required()
+def get_weight_goals():
+    try:
+        goals = WeightGoal.query.filter_by(
+            user_identity=get_current_user_identity()
+        ).order_by(WeightGoal.created_at.asc(), WeightGoal.id.asc()).all()
+        return jsonify({
+            "code": 200,
+            "message": "Success",
+            "data": [goal.to_dict() for goal in goals],
+            "total": len(goals)
+        }), 200
+    except Exception as e:
+        return jsonify({"code": 500, "message": str(e), "data": [], "total": 0}), 200
+
+
+@weight_api_pb.route('/weight/goal/upsert', methods=['POST'])
+@jwt_required()
+def upsert_weight_goal():
+    data = request.get_json() or {}
+
+    try:
+        tracked_person = get_owned_tracked_person(data.get('trackedPersonId'))
+        goal = build_goal_query(tracked_person).first()
+        if goal is None:
+            goal = WeightGoal(
+                user_identity=get_current_user_identity(),
+                tracked_person_id=tracked_person.id if tracked_person else None,
+                start_weight=parse_decimal(data.get('startWeight'), 'startWeight', required=True),
+                target_weight=parse_decimal(data.get('targetWeight'), 'targetWeight', required=True),
+                target_date=parse_optional_date(data.get('targetDate'), 'targetDate'),
+            )
+            db.session.add(goal)
+        else:
+            goal.start_weight = parse_decimal(data.get('startWeight'), 'startWeight', required=True)
+            goal.target_weight = parse_decimal(data.get('targetWeight'), 'targetWeight', required=True)
+            goal.target_date = parse_optional_date(data.get('targetDate'), 'targetDate')
+            goal.updated_at = datetime.utcnow()
+
+        db.session.commit()
+        return jsonify({"code": 200, "message": "Success", "data": goal.to_dict()}), 200
+    except ValueError as e:
+        return jsonify({"code": 500, "message": str(e), "data": {}}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"code": 500, "message": str(e), "data": {}}), 200
 
 
 @weight_api_pb.route('/weight/record/latest', methods=['GET'])
