@@ -6,6 +6,25 @@ import bcrypt
 
 auth_api_pb = Blueprint('auth_api', __name__)
 
+AUTH_COOKIE_NAMES = (
+    'access_token_cookie',
+    'csrf_access_token',
+    'refresh_token_cookie',
+    'csrf_refresh_token',
+)
+
+
+def unset_legacy_host_cookies(response):
+    for cookie_name in AUTH_COOKIE_NAMES:
+        response.set_cookie(
+            cookie_name,
+            value='',
+            expires=0,
+            path='/',
+            secure=False,
+            httponly=cookie_name.endswith('_token_cookie'),
+        )
+
 
 @auth_api_pb.route('/auth/login', methods=['POST'])
 def login():
@@ -44,6 +63,7 @@ def login():
                                      "refresh_token": refresh_token,"data": user_data}), 200)
 
     # 设置访问令牌和刷新令牌到Cookie
+    unset_legacy_host_cookies(response)
     set_access_cookies(response, access_token)
     set_refresh_cookies(response, refresh_token)
     return response
@@ -53,6 +73,7 @@ def login():
 def logout():
     response = jsonify({"code": 200, "message": "logout successful", "data": {}})
     unset_jwt_cookies(response)
+    unset_legacy_host_cookies(response)
     return response
 
 
