@@ -26,6 +26,9 @@ jobs:
     timeout-minutes: 45
 
     steps:
+      - name: Record deployment start
+        run: echo "DEPLOY_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
+
       - name: Checkout code
         uses: actions/checkout@v6
         with:
@@ -128,3 +131,54 @@ jobs:
             echo "- Host: \`${{ env.HEALTH_CHECK_HOST }}\`"
             echo "- Registry: bypassed (built on k3s node)"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Notify WeCom
+        if: always()
+        continue-on-error: true
+        env:
+          WECOM_WEBHOOK_URL: ${{ secrets.WECOM_WEBHOOK_URL }}
+          DEPLOY_STATUS: ${{ job.status }}
+        run: |
+          if [ -z "$WECOM_WEBHOOK_URL" ]; then
+            echo "::warning::WECOM_WEBHOOK_URL is not configured; skipping notification"
+            exit 0
+          fi
+
+          ELAPSED=$(( $(date +%s) - ${DEPLOY_STARTED_AT:-$(date +%s)} ))
+          DURATION="$((ELAPSED / 60))m $((ELAPSED % 60))s"
+          COMMIT_SHA="$(git rev-parse HEAD 2>/dev/null || printf '%s' "$GITHUB_SHA")"
+          SHORT_SHA="${COMMIT_SHA:0:7}"
+          COMMIT_SUBJECT="$(git log -1 --pretty=%s 2>/dev/null || printf 'Unavailable')"
+          SERVICE_URL="https://${HEALTH_CHECK_HOST}${HEALTH_CHECK_PATH}"
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          COMMIT_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${COMMIT_SHA}"
+
+          if [ "$DEPLOY_STATUS" = "success" ]; then
+            TITLE="### Deployment succeeded"
+            COLOR="info"
+          else
+            TITLE="### Deployment ${DEPLOY_STATUS}"
+            COLOR="warning"
+          fi
+
+          CONTENT="$(jq -n -r \
+            --arg title "$TITLE" \
+            --arg color "$COLOR" \
+            --arg project "$PROJECT_NAME" \
+            --arg status "$DEPLOY_STATUS" \
+            --arg duration "$DURATION" \
+            --arg subject "$COMMIT_SUBJECT" \
+            --arg short_sha "$SHORT_SHA" \
+            --arg commit_url "$COMMIT_URL" \
+            --arg service_url "$SERVICE_URL" \
+            --arg run_url "$RUN_URL" \
+            '$title + "\n> Project: **" + $project + "**\n> Status: <font color=\"" + $color + "\">" + $status + "</font>\n> Duration: " + $duration + "\n> Commit: [" + $short_sha + "](" + $commit_url + ") " + $subject + "\n> Service: [" + $service_url + "](" + $service_url + ")\n> Details: [GitHub Actions](" + $run_url + ")"')"
+          PAYLOAD="$(jq -n --arg content "$CONTENT" \
+            '{msgtype: "markdown", markdown: {content: $content}}')"
+          RESPONSE="$(curl --fail-with-body --silent --show-error \
+            --retry 2 --retry-all-errors \
+            --header 'Content-Type: application/json' \
+            --data "$PAYLOAD" \
+            "$WECOM_WEBHOOK_URL")"
+          echo "$RESPONSE"
+          test "$(jq -r '.errcode // -1' <<< "$RESPONSE")" = "0"
