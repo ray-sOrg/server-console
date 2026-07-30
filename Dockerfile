@@ -9,7 +9,8 @@ RUN useradd -m -u 1000 appuser
 # 复制 requirements.txt 并安装依赖
 COPY requirements.txt .
 ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
-RUN pip install --no-cache-dir --index-url "$PIP_INDEX_URL" -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --index-url "$PIP_INDEX_URL" -r requirements.txt
 
 # 复制应用代码并设置权限
 COPY --chown=appuser:appuser . .
