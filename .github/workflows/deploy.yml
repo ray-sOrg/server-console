@@ -2,30 +2,28 @@ name: Build & Deploy
 
 on:
   push:
-    branches: [main, develop]
-    tags: ["v*"]
+    branches: [main]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: production-deploy
   cancel-in-progress: false
+
+permissions:
+  contents: read
 
 env:
   PROJECT_NAME: server-console
-  TCR_REGISTRY: ccr.ccs.tencentyun.com
-  TCR_NAMESPACE: ray321
   K8S_DEPLOYMENT_FILE: deployment.yaml
   ROLLOUT_TIMEOUT: 180
   HEALTH_CHECK_HOST: api.tt829.cn
   HEALTH_CHECK_PATH: /health
 
 jobs:
-  build:
-    name: Build & Push Docker Image
+  deploy:
+    name: Build & Deploy to Kubernetes
     runs-on: ubuntu-latest
-
-    outputs:
-      image: ${{ steps.meta.outputs.image }}
-      tag: ${{ steps.meta.outputs.tag }}
+    environment: production
+    timeout-minutes: 45
 
     steps:
       - name: Checkout code
@@ -33,60 +31,25 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Login to Tencent TCR
-        uses: docker/login-action@v4
-        with:
-          registry: ${{ env.TCR_REGISTRY }}
-          username: ${{ secrets.TCR_USERNAME }}
-          password: ${{ secrets.TCR_PASSWORD }}
-
       - name: Generate image metadata
         id: meta
-        shell: bash
         run: |
-          IMAGE_NAME="${{ env.TCR_REGISTRY }}/${{ env.TCR_NAMESPACE }}/${{ env.PROJECT_NAME }}"
-          SHORT_SHA="$(git rev-parse --short HEAD)"
-
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            IMAGE_TAG="${GITHUB_REF#refs/tags/v}"
-          elif [[ "$GITHUB_REF" == refs/heads/main ]]; then
-            IMAGE_TAG="build-${GITHUB_RUN_NUMBER}-${SHORT_SHA}"
-          elif [[ "$GITHUB_REF" == refs/heads/develop ]]; then
-            IMAGE_TAG="develop-${SHORT_SHA}"
-          else
-            IMAGE_TAG="$SHORT_SHA"
-          fi
-
+          IMAGE_NAME="localhost/${{ env.PROJECT_NAME }}"
+          IMAGE_TAG="build-${GITHUB_RUN_NUMBER}-$(git rev-parse --short HEAD)"
           echo "image=$IMAGE_NAME" >> "$GITHUB_OUTPUT"
           echo "tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
           echo "Image: $IMAGE_NAME:$IMAGE_TAG"
 
-      - name: Build & Push Docker Image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          tags: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
-          outputs: type=image,push=true,oci-mediatypes=false
-          provenance: false
-          sbom: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          platforms: linux/amd64
-
-  deploy:
-    name: Deploy to Kubernetes
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    needs: build
-    environment: production
-    timeout-minutes: 10
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
+      - name: Package deployment source
+        id: source
+        run: |
+          git archive --format=tar.gz --output "$RUNNER_TEMP/deployment-source.tar.gz" HEAD
+          (
+            cd "$RUNNER_TEMP"
+            sha256sum deployment-source.tar.gz > deployment-source.tar.gz.sha256
+          )
+          printf '%s\n' "${{ steps.meta.outputs.tag }}" > "$RUNNER_TEMP/deployment-image-tag"
+          echo "size=$(du -h "$RUNNER_TEMP/deployment-source.tar.gz" | cut -f1)" >> "$GITHUB_OUTPUT"
 
       - name: Configure SSH
         env:
@@ -100,20 +63,35 @@ jobs:
 
       - name: Prepare deployment manifest
         run: |
-          IMAGE="${{ needs.build.outputs.image }}"
-          TAG="${{ needs.build.outputs.tag }}"
+          IMAGE="${{ steps.meta.outputs.image }}"
+          TAG="${{ steps.meta.outputs.tag }}"
           sed -i "s|__IMAGE_NAME__|$IMAGE|g" "${{ env.K8S_DEPLOYMENT_FILE }}"
           sed -i "s|__IMAGE_TAG__|$TAG|g" "${{ env.K8S_DEPLOYMENT_FILE }}"
           echo "Deploying: $IMAGE:$TAG"
 
-      - name: Upload deployment manifest
+      - name: Upload source and deployment manifest
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
         run: |
-          scp -o BatchMode=yes \
+          rsync \
+            --archive \
+            --partial \
+            --timeout=120 \
+            -e "ssh -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=30 -o ServerAliveCountMax=4" \
+            "$RUNNER_TEMP/deployment-source.tar.gz" \
+            "$RUNNER_TEMP/deployment-source.tar.gz.sha256" \
+            "$RUNNER_TEMP/deployment-image-tag" \
             "${{ env.K8S_DEPLOYMENT_FILE }}" \
-            "${DEPLOY_USER}@${DEPLOY_HOST}:${{ env.PROJECT_NAME }}-deployment.yaml"
+            "${DEPLOY_USER}@${DEPLOY_HOST}:"
+
+      - name: Build and import image on k3s node
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          ssh -o BatchMode=yes "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            'sudo -n /usr/local/sbin/k3s-build-deployment-image'
 
       - name: Apply deployment
         env:
@@ -121,7 +99,7 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
         run: |
           ssh -o BatchMode=yes "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            'export KUBECONFIG="$HOME/.kube/config"; kubectl apply -f "$HOME/server-console-deployment.yaml"; status=$?; rm -f "$HOME/server-console-deployment.yaml"; exit $status'
+            'export KUBECONFIG="$HOME/.kube/config"; kubectl apply -f "$HOME/deployment.yaml"; status=$?; rm -f "$HOME/deployment.yaml"; exit $status'
 
       - name: Verify deployment and service route
         env:
@@ -145,6 +123,8 @@ jobs:
           {
             echo "### Deployment: ${{ job.status }}"
             echo ""
-            echo "- Image: \`${{ needs.build.outputs.image }}:${{ needs.build.outputs.tag }}\`"
+            echo "- Image: \`${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}\`"
+            echo "- Source archive: \`${{ steps.source.outputs.size }}\`"
             echo "- Host: \`${{ env.HEALTH_CHECK_HOST }}\`"
+            echo "- Registry: bypassed (built on k3s node)"
           } >> "$GITHUB_STEP_SUMMARY"
