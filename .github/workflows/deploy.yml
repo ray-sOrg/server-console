@@ -14,16 +14,16 @@ permissions:
 env:
   PROJECT_NAME: server-console
   K8S_DEPLOYMENT_FILE: deployment.yaml
-  ROLLOUT_TIMEOUT: 180
   HEALTH_CHECK_HOST: api.tt829.cn
   HEALTH_CHECK_PATH: /health
+  DEPLOY_API_URL: https://home.tt829.cn/__deploy/v1
 
 jobs:
   deploy:
     name: Build & Deploy to Kubernetes
     runs-on: ubuntu-latest
     environment: production
-    timeout-minutes: 45
+    timeout-minutes: 50
 
     steps:
       - name: Record deployment start
@@ -54,16 +54,6 @@ jobs:
           printf '%s\n' "${{ steps.meta.outputs.tag }}" > "$RUNNER_TEMP/deployment-image-tag"
           echo "size=$(du -h "$RUNNER_TEMP/deployment-source.tar.gz" | cut -f1)" >> "$GITHUB_OUTPUT"
 
-      - name: Configure SSH
-        env:
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
-        run: |
-          install -d -m 700 "$HOME/.ssh"
-          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/id_ed25519"
-          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
-          chmod 600 "$HOME/.ssh/id_ed25519" "$HOME/.ssh/known_hosts"
-
       - name: Prepare deployment manifest
         run: |
           IMAGE="${{ steps.meta.outputs.image }}"
@@ -72,53 +62,69 @@ jobs:
           sed -i "s|__IMAGE_TAG__|$TAG|g" "${{ env.K8S_DEPLOYMENT_FILE }}"
           echo "Deploying: $IMAGE:$TAG"
 
-      - name: Upload source and deployment manifest
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      - name: Package deployment request
         run: |
-          rsync \
-            --archive \
-            --partial \
-            --timeout=120 \
-            -e "ssh -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=30 -o ServerAliveCountMax=4" \
-            "$RUNNER_TEMP/deployment-source.tar.gz" \
-            "$RUNNER_TEMP/deployment-source.tar.gz.sha256" \
-            "$RUNNER_TEMP/deployment-image-tag" \
-            "${{ env.K8S_DEPLOYMENT_FILE }}" \
-            "${DEPLOY_USER}@${DEPLOY_HOST}:"
+          tar -C "$RUNNER_TEMP" -cf "$RUNNER_TEMP/deployment-request.tar" \
+            deployment-source.tar.gz \
+            deployment-source.tar.gz.sha256 \
+            deployment-image-tag \
+            -C "$GITHUB_WORKSPACE" \
+            "${{ env.K8S_DEPLOYMENT_FILE }}"
+          sha256sum "$RUNNER_TEMP/deployment-request.tar" \
+            | cut -d' ' -f1 > "$RUNNER_TEMP/deployment-request.sha256"
 
-      - name: Build and import image on k3s node
+      - name: Submit deployment over HTTPS
         env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_HTTP_TOKEN: ${{ secrets.DEPLOY_HTTP_TOKEN }}
         run: |
-          ssh -o BatchMode=yes "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            'sudo -n /usr/local/sbin/k3s-build-deployment-image'
+          test -n "$DEPLOY_HTTP_TOKEN"
+          DEPLOY_ID="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          CONTENT_SHA256="$(cat "$RUNNER_TEMP/deployment-request.sha256")"
+          curl --fail-with-body --silent --show-error \
+            --retry 2 --retry-all-errors \
+            --connect-timeout 15 --max-time 180 \
+            --request POST \
+            --header "Authorization: Bearer $DEPLOY_HTTP_TOKEN" \
+            --header "Content-Type: application/x-tar" \
+            --header "X-Deploy-ID: $DEPLOY_ID" \
+            --header "X-Commit-SHA: $GITHUB_SHA" \
+            --header "X-Content-SHA256: $CONTENT_SHA256" \
+            --data-binary "@$RUNNER_TEMP/deployment-request.tar" \
+            "$DEPLOY_API_URL/jobs/$PROJECT_NAME"
 
-      - name: Apply deployment
+      - name: Wait for server-side deployment
         env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_HTTP_TOKEN: ${{ secrets.DEPLOY_HTTP_TOKEN }}
         run: |
-          ssh -o BatchMode=yes "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            'export KUBECONFIG="$HOME/.kube/config"; kubectl apply -f "$HOME/deployment.yaml"; status=$?; rm -f "$HOME/deployment.yaml"; exit $status'
-
-      - name: Verify deployment and service route
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-        run: |
-          DEPLOYMENT="${{ env.PROJECT_NAME }}-deployment"
-          if ssh -o BatchMode=yes "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "export KUBECONFIG=\"\$HOME/.kube/config\"; kubectl rollout status deployment/$DEPLOYMENT --timeout=${{ env.ROLLOUT_TIMEOUT }}s && curl --fail --silent --show-error --retry 5 --retry-delay 3 --max-time 15 -H 'Host: ${{ env.HEALTH_CHECK_HOST }}' 'http://127.0.0.1${{ env.HEALTH_CHECK_PATH }}' >/dev/null"; then
-            echo "Deployment and route check succeeded"
-          else
-            echo "Deployment check failed; rolling back"
-            ssh -o BatchMode=yes "${DEPLOY_USER}@${DEPLOY_HOST}" \
-              "export KUBECONFIG=\"\$HOME/.kube/config\"; kubectl rollout undo deployment/$DEPLOYMENT && kubectl rollout status deployment/$DEPLOYMENT --timeout=${{ env.ROLLOUT_TIMEOUT }}s"
-            exit 1
-          fi
+          DEPLOY_ID="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          for attempt in $(seq 1 270); do
+            RESPONSE="$(curl --fail-with-body --silent --show-error \
+              --retry 2 --retry-all-errors \
+              --connect-timeout 10 --max-time 30 \
+              --header "Authorization: Bearer $DEPLOY_HTTP_TOKEN" \
+              "$DEPLOY_API_URL/jobs/$PROJECT_NAME/$DEPLOY_ID")"
+            STATUS="$(jq -r '.status' <<<"$RESPONSE")"
+            MESSAGE="$(jq -r '.message // ""' <<<"$RESPONSE")"
+            echo "Server deployment: $STATUS - $MESSAGE"
+            case "$STATUS" in
+              succeeded)
+                exit 0
+                ;;
+              failed)
+                jq -r '.log_tail // "No server log available."' <<<"$RESPONSE" >&2
+                exit 1
+                ;;
+              queued|running)
+                sleep 10
+                ;;
+              *)
+                echo "Unexpected deployment status: $STATUS" >&2
+                exit 1
+                ;;
+            esac
+          done
+          echo "Timed out waiting for the server deployment" >&2
+          exit 1
 
       - name: Deployment summary
         if: always()
@@ -129,6 +135,7 @@ jobs:
             echo "- Image: \`${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}\`"
             echo "- Source archive: \`${{ steps.source.outputs.size }}\`"
             echo "- Host: \`${{ env.HEALTH_CHECK_HOST }}\`"
+            echo "- Transport: signed HTTPS (no deployment SSH login)"
             echo "- Registry: bypassed (built on k3s node)"
           } >> "$GITHUB_STEP_SUMMARY"
 
