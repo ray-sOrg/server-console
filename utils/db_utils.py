@@ -1,7 +1,25 @@
-from extensions import db
 import importlib
-import os
 import logging
+import os
+
+from sqlalchemy import inspect, text
+
+from extensions import db
+
+
+REQUIRED_COLUMNS = {
+    'app_user': {
+        'display_name': 'VARCHAR(100)',
+        'height_cm': 'INTEGER',
+        'birth_date': 'DATE',
+    },
+    'fitness_session': {
+        'readiness_score': 'SMALLINT',
+        'effort_score': 'SMALLINT',
+        'pain_flag': 'BOOLEAN NOT NULL DEFAULT FALSE',
+        'pain_notes': 'TEXT',
+    },
+}
 
 
 def get_model_modules():
@@ -23,6 +41,34 @@ def import_models():
     for model_file in model_files:
         module_name = f'model.{model_file}'
         importlib.import_module(module_name)
+
+
+def add_missing_columns():
+    """Apply small, additive schema upgrades needed by existing installations."""
+    inspector = inspect(db.engine)
+    existing_tables = set(inspector.get_table_names())
+
+    with db.engine.begin() as connection:
+        for table_name, required_columns in REQUIRED_COLUMNS.items():
+            if table_name not in existing_tables:
+                continue
+
+            existing_columns = {
+                column['name'] for column in inspector.get_columns(table_name)
+            }
+            for column_name, column_type in required_columns.items():
+                if column_name in existing_columns:
+                    continue
+
+                connection.execute(text(
+                    f'ALTER TABLE {table_name} '
+                    f'ADD COLUMN {column_name} {column_type}'
+                ))
+                logging.info(
+                    'Added missing database column %s.%s',
+                    table_name,
+                    column_name,
+                )
 
 
 def create_missing_tables(app):
@@ -54,5 +100,7 @@ def create_missing_tables(app):
                 db.create_all()
             else:
                 print('________所有表已存在')
+
+            add_missing_columns()
         except Exception as e:
             logging.error(f'Error creating tables: {e}')
