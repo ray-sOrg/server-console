@@ -100,6 +100,7 @@ WEEK = [
 
 def ensure_default_fitness_data(db, user_identity):
     exercises = FitnessExercise.query.filter_by(user_identity=user_identity).all()
+    had_fitness_data = bool(exercises)
     by_name = {exercise.name: exercise for exercise in exercises}
 
     for row in EXERCISES:
@@ -131,6 +132,12 @@ def ensure_default_fitness_data(db, user_identity):
     if existing_plan:
         db.session.commit()
         return existing_plan
+
+    # Existing users may intentionally delete every plan. Exercises act as the
+    # initialization marker so bootstrap does not recreate the default plan.
+    if had_fitness_data:
+        db.session.commit()
+        return None
 
     plan = FitnessPlan(
         user_identity=user_identity,

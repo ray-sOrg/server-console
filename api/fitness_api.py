@@ -345,12 +345,14 @@ def save_fitness_plan():
         plan.duration_weeks = duration_weeks
         plan.start_date = parse_optional_date(data.get('startDate'), 'startDate')
         plan.tracked_person_id = tracked_person.id if tracked_person else None
-        plan.is_active = bool(data.get('isActive', plan.is_active))
-        if plan.is_active:
+        should_activate = bool(data.get('isActive', plan.is_active))
+        if should_activate:
+            db.session.flush()
             FitnessPlan.query.filter(
                 FitnessPlan.user_identity == user_identity,
-                FitnessPlan.id != plan.id if plan.id else True,
+                FitnessPlan.id != plan.id,
             ).update({'is_active': False}, synchronize_session=False)
+        plan.is_active = should_activate
 
         if plan.id:
             plan.days.clear()
@@ -515,9 +517,6 @@ def delete_fitness_plan():
             FitnessPlan.is_active.desc(),
             FitnessPlan.created_at.desc(),
         ).first()
-        if not remaining_plan:
-            return failure('至少需要保留一份训练计划')
-
         linked_sessions = FitnessSession.query.filter_by(
             user_identity=user_identity,
             plan_id=plan.id,
@@ -525,7 +524,7 @@ def delete_fitness_plan():
             {'plan_id': None, 'plan_day_id': None},
             synchronize_session=False,
         )
-        if plan.is_active:
+        if plan.is_active and remaining_plan:
             remaining_plan.is_active = True
 
         deleted_id = plan.id
@@ -533,7 +532,7 @@ def delete_fitness_plan():
         db.session.commit()
         return success({
             'id': deleted_id,
-            'activePlanId': remaining_plan.id,
+            'activePlanId': remaining_plan.id if remaining_plan else None,
             'preservedSessionCount': linked_sessions,
         })
     except ValueError as error:
