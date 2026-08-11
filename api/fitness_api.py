@@ -447,7 +447,7 @@ def copy_fitness_plan():
     try:
         source = owned_plan(parse_int(data.get('id'), 'id', 1, required=True), user_identity)
         requested_name = (data.get('name') or '').strip()
-        copy_name = requested_name or f'{source.name} · 新版本'
+        copy_name = requested_name or f'{source.name} · 副本'
         if len(copy_name) > 120:
             raise ValueError('name must be 120 characters or less')
         plan = FitnessPlan(
@@ -493,6 +493,49 @@ def copy_fitness_plan():
                 ))
         db.session.commit()
         return success(serialize_plan(plan))
+    except ValueError as error:
+        db.session.rollback()
+        return failure(str(error))
+    except Exception as error:
+        db.session.rollback()
+        return failure(str(error))
+
+
+@fitness_api_pb.route('/fitness/plan/delete', methods=['POST'])
+@jwt_required()
+def delete_fitness_plan():
+    user_identity = get_jwt_identity()
+    data = request.get_json() or {}
+    try:
+        plan = owned_plan(parse_int(data.get('id'), 'id', 1, required=True), user_identity)
+        remaining_plan = FitnessPlan.query.filter(
+            FitnessPlan.user_identity == user_identity,
+            FitnessPlan.id != plan.id,
+        ).order_by(
+            FitnessPlan.is_active.desc(),
+            FitnessPlan.created_at.desc(),
+        ).first()
+        if not remaining_plan:
+            return failure('至少需要保留一份训练计划')
+
+        linked_sessions = FitnessSession.query.filter_by(
+            user_identity=user_identity,
+            plan_id=plan.id,
+        ).update(
+            {'plan_id': None, 'plan_day_id': None},
+            synchronize_session=False,
+        )
+        if plan.is_active:
+            remaining_plan.is_active = True
+
+        deleted_id = plan.id
+        db.session.delete(plan)
+        db.session.commit()
+        return success({
+            'id': deleted_id,
+            'activePlanId': remaining_plan.id,
+            'preservedSessionCount': linked_sessions,
+        })
     except ValueError as error:
         db.session.rollback()
         return failure(str(error))

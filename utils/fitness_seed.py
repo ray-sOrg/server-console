@@ -124,7 +124,9 @@ def ensure_default_fitness_data(db, user_identity):
 
     existing_plan = FitnessPlan.query.filter_by(
         user_identity=user_identity,
-        name=DEFAULT_PLAN_NAME,
+    ).order_by(
+        FitnessPlan.is_active.desc(),
+        FitnessPlan.created_at.asc(),
     ).first()
     if existing_plan:
         db.session.commit()
