@@ -2,6 +2,8 @@ from model.fitness_exercise import FitnessExercise
 from model.fitness_plan import FitnessPlan
 from model.fitness_plan_day import FitnessPlanDay
 from model.fitness_plan_exercise import FitnessPlanExercise
+from model.fitness_session import FitnessSession
+from model.fitness_session_exercise import FitnessSessionExercise
 
 
 DEFAULT_PLAN_NAME = '12周力量与俄挺计划'
@@ -57,7 +59,7 @@ WEEK = [
         ('过顶哑铃臂屈伸', 3, (10, 15), None, (1, 2), 90, '先加次数', '肘部舒适优先。'),
     ]),
     (2, '下肢A', '深蹲 / 后链 / 腹', False, 80, [
-        ('杠铃深蹲', 4, (5, 8), None, (1, 2), 180, '双进阶', '动作深度保持一致。'),
+        ('杠铃深蹲', 4, (5, 8), None, (1, 2), 120, '双进阶', '动作深度保持一致。'),
         ('罗马尼亚硬拉', 3, (6, 10), None, (1, 2), 120, '双进阶', '背部保持中立。'),
         ('保加利亚分腿蹲', 3, (8, 12), None, (1, 2), 90, '先加次数', '每侧完成目标次数。'),
         ('壶铃摆动', 3, (15, 20), None, (2, 3), 60, '先练髋铰链', '使用10kg固定重量。'),
@@ -122,6 +124,24 @@ def ensure_default_fitness_data(db, user_identity):
         by_name[name] = exercise
 
     db.session.flush()
+
+    # This training plan uses a two-minute rest for barbell squats. Keep
+    # existing plan copies and an unfinished workout aligned with that choice.
+    squat = by_name.get('杠铃深蹲')
+    if squat:
+        plan_squats = FitnessPlanExercise.query.join(FitnessPlanDay).join(FitnessPlan).filter(
+            FitnessPlan.user_identity == user_identity,
+            FitnessPlanExercise.exercise_id == squat.id,
+            FitnessPlanExercise.rest_seconds != 120,
+        ).all()
+        active_session_squats = FitnessSessionExercise.query.join(FitnessSession).filter(
+            FitnessSession.user_identity == user_identity,
+            FitnessSession.status == 'in_progress',
+            FitnessSessionExercise.exercise_id == squat.id,
+            FitnessSessionExercise.rest_seconds != 120,
+        ).all()
+        for item in [*plan_squats, *active_session_squats]:
+            item.rest_seconds = 120
 
     existing_plan = FitnessPlan.query.filter_by(
         user_identity=user_identity,

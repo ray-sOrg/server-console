@@ -1,10 +1,10 @@
 import time
 from datetime import datetime
+import bcrypt
 from flask import Blueprint, jsonify, request
 from model.user import User
 from extensions import db
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from werkzeug.security import generate_password_hash
 
 user_api_pb = Blueprint('user_api', __name__)
 
@@ -42,8 +42,11 @@ def add_user():
         return jsonify({"code": 500, "message": "Bad Request", "data": "Invalid role specified"}), 200
 
     # 创建并添加新用户
-    # 使用 generate_password_hash 函数将密码哈希化
-    password_hashed = generate_password_hash(password, method='pbkdf2:sha256')
+    # 登录接口使用 bcrypt 校验，新建账号保持相同哈希方案。
+    password_hashed = bcrypt.hashpw(
+        password.encode('utf-8'),
+        bcrypt.gensalt(),
+    ).decode('utf-8')
     new_user = User(username=username, password=password_hashed, role=role)
     db.session.add(new_user)
     db.session.commit()

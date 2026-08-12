@@ -695,6 +695,54 @@ def save_fitness_set():
         return failure(str(error))
 
 
+@fitness_api_pb.route('/fitness/session/exercise/set/add', methods=['POST'])
+@jwt_required()
+def add_fitness_set():
+    user_identity = get_jwt_identity()
+    data = request.get_json() or {}
+    try:
+        exercise_id = parse_int(
+            data.get('exerciseId'),
+            'exerciseId',
+            1,
+            required=True,
+        )
+        session_exercise = FitnessSessionExercise.query.join(
+            FitnessSession,
+            FitnessSessionExercise.session_id == FitnessSession.id,
+        ).filter(
+            FitnessSessionExercise.id == exercise_id,
+            FitnessSession.user_identity == user_identity,
+        ).first()
+        if not session_exercise:
+            return failure('Fitness session exercise not found', code=404)
+        if session_exercise.session.status != 'in_progress':
+            raise ValueError('Only an active workout can add sets')
+
+        next_set_number = max(
+            (item.set_number for item in session_exercise.sets),
+            default=0,
+        ) + 1
+        fitness_set = FitnessSet(
+            session_exercise=session_exercise,
+            set_number=next_set_number,
+        )
+        db.session.add(fitness_set)
+        session_exercise.target_sets = next_set_number
+        session_exercise.completed = False
+        db.session.commit()
+        return success(serialize_session(
+            session_exercise.session,
+            include_previous=True,
+        ))
+    except ValueError as error:
+        db.session.rollback()
+        return failure(str(error))
+    except Exception as error:
+        db.session.rollback()
+        return failure(str(error))
+
+
 @fitness_api_pb.route('/fitness/session/finish', methods=['POST'])
 @jwt_required()
 def finish_fitness_session():
