@@ -33,8 +33,14 @@ JWT_TOKEN_LOCATION = ["cookies"]
 JWT_COOKIE_SECURE = IS_PRODUCTION
 JWT_COOKIE_DOMAIN = os.getenv('JWT_COOKIE_DOMAIN') or ('.tt829.cn' if IS_PRODUCTION else None)
 JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'change-this-to-a-strong-secret-key')
-JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=30)
-JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=7)
+JWT_ACCESS_TOKEN_EXPIRES = timedelta(days=7)
+JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=180)
+JWT_SESSION_COOKIE = False
+JWT_COOKIE_SAMESITE = 'Lax'
+# The refresh JWT is only needed by authentication endpoints. Its readable
+# CSRF companion remains on / so the SPA can send the double-submit header.
+JWT_REFRESH_COOKIE_PATH = '/api/auth'
+JWT_REFRESH_CSRF_COOKIE_PATH = '/'
 
 # Celery 配置
 CELERY_RESULT_BACKEND = os.getenv('REDIS_URL', 'redis://localhost:6379/0')

@@ -1,8 +1,40 @@
+import logging
+
 from flask import jsonify
 from extensions import jwt
+from model.auth_session import AuthSession
+from utils.auth_session_utils import (
+    refresh_jti_is_valid,
+    session_is_active,
+    utc_now,
+)
 
 
 def register_jwt_errors():
+    @jwt.token_in_blocklist_loader
+    def token_is_revoked(jwt_header, jwt_payload):
+        session_id = jwt_payload.get('sid')
+        if not session_id:
+            return True
+        try:
+            auth_session = AuthSession.query.filter_by(
+                session_id=session_id,
+                user_identity=jwt_payload.get('sub'),
+            ).first()
+            now = utc_now()
+            if not session_is_active(auth_session, now):
+                return True
+            if jwt_payload.get('type') == 'refresh':
+                return not refresh_jti_is_valid(
+                    auth_session,
+                    jwt_payload.get('jti'),
+                    now,
+                )
+            return False
+        except Exception:
+            logging.exception('Failed to validate authentication session')
+            return True
+
     # 设置过期令牌的错误处理程序
     @jwt.expired_token_loader
     def expired_token_callback(jwt_header, jwt_payload):
