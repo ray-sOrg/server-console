@@ -79,6 +79,89 @@ def serialize_plan(plan):
     return result
 
 
+def normalize_plan_days(days):
+    """Return the persisted plan structure without database-only fields."""
+    normalized = []
+    for day in sorted(days, key=lambda item: item.weekday):
+        normalized.append({
+            'weekday': day.weekday,
+            'name': day.name,
+            'focus': day.focus,
+            'isRest': day.is_rest,
+            'estimatedMinutes': day.estimated_minutes,
+            'notes': day.notes,
+            'exercises': [
+                {
+                    'exerciseId': item.exercise_id,
+                    'sets': item.sets,
+                    'repsMin': item.reps_min,
+                    'repsMax': item.reps_max,
+                    'durationSecondsMin': item.duration_seconds_min,
+                    'durationSecondsMax': item.duration_seconds_max,
+                    'rirMin': item.rir_min,
+                    'rirMax': item.rir_max,
+                    'targetWeightKg': float(item.target_weight_kg)
+                    if item.target_weight_kg is not None else None,
+                    'weightNote': item.weight_note,
+                    'restSeconds': item.rest_seconds,
+                    'progressionType': item.progression_type,
+                    'planNotes': item.plan_notes,
+                    'supersetGroup': item.superset_group,
+                    'eachSide': item.each_side,
+                }
+                for item in sorted(day.exercises, key=lambda item: item.sort_order)
+            ],
+        })
+    return normalized
+
+
+def normalize_plan_days_payload(days_payload):
+    """Validate and normalize the client structure for an equality check."""
+    normalized = []
+    for day_data in sorted(days_payload, key=lambda item: int(item.get('weekday', 0))):
+        weekday = parse_int(day_data.get('weekday'), 'weekday', 1, 7, True)
+        exercises = []
+        for item_data in day_data.get('exercises') or []:
+            target_weight = parse_decimal(item_data.get('targetWeightKg'), 'targetWeightKg')
+            exercises.append({
+                'exerciseId': parse_int(
+                    item_data.get('exerciseId'), 'exerciseId', 1, required=True
+                ),
+                'sets': parse_int(item_data.get('sets'), 'sets', 1, 20),
+                'repsMin': parse_int(item_data.get('repsMin'), 'repsMin', 0, 1000),
+                'repsMax': parse_int(item_data.get('repsMax'), 'repsMax', 0, 1000),
+                'durationSecondsMin': parse_int(
+                    item_data.get('durationSecondsMin'), 'durationSecondsMin', 0, 86400
+                ),
+                'durationSecondsMax': parse_int(
+                    item_data.get('durationSecondsMax'), 'durationSecondsMax', 0, 86400
+                ),
+                'rirMin': parse_int(item_data.get('rirMin'), 'rirMin', 0, 10),
+                'rirMax': parse_int(item_data.get('rirMax'), 'rirMax', 0, 10),
+                'targetWeightKg': float(target_weight) if target_weight is not None else None,
+                'weightNote': (item_data.get('weightNote') or '').strip() or None,
+                'restSeconds': parse_int(
+                    item_data.get('restSeconds'), 'restSeconds', 0, 3600
+                ),
+                'progressionType': (item_data.get('progressionType') or '').strip() or None,
+                'planNotes': (item_data.get('planNotes') or '').strip() or None,
+                'supersetGroup': (item_data.get('supersetGroup') or '').strip() or None,
+                'eachSide': bool(item_data.get('eachSide', False)),
+            })
+        normalized.append({
+            'weekday': weekday,
+            'name': ((day_data.get('name') or f'星期{weekday}').strip())[:120],
+            'focus': (day_data.get('focus') or '').strip() or None,
+            'isRest': bool(day_data.get('isRest', False)),
+            'estimatedMinutes': parse_int(
+                day_data.get('estimatedMinutes'), 'estimatedMinutes', 0, 480
+            ),
+            'notes': (day_data.get('notes') or '').strip() or None,
+            'exercises': exercises,
+        })
+    return normalized
+
+
 def previous_sets_by_exercise(session):
     exercise_ids = {
         item.exercise_id for item in session.exercises if item.exercise_id is not None
@@ -327,18 +410,22 @@ def save_fitness_plan():
         if len(weekdays) != len(set(weekdays)):
             raise ValueError('weekday must be unique within a plan')
 
-        exercise_ids = {
-            parse_int(item.get('exerciseId'), 'exerciseId', 1, required=True)
-            for day in days_payload
-            for item in (day.get('exercises') or [])
-        }
-        owned_exercises = FitnessExercise.query.filter(
-            FitnessExercise.user_identity == user_identity,
-            FitnessExercise.id.in_(exercise_ids),
-        ).all() if exercise_ids else []
-        exercise_map = {exercise.id: exercise for exercise in owned_exercises}
-        if len(exercise_map) != len(exercise_ids):
-            raise ValueError('One or more exercises are invalid')
+        normalized_days = normalize_plan_days_payload(days_payload)
+        replace_days = not plan_id or normalize_plan_days(plan.days) != normalized_days
+        exercise_map = {}
+        if replace_days:
+            exercise_ids = {
+                item['exerciseId']
+                for day in normalized_days
+                for item in day['exercises']
+            }
+            owned_exercises = FitnessExercise.query.filter(
+                FitnessExercise.user_identity == user_identity,
+                FitnessExercise.id.in_(exercise_ids),
+            ).all() if exercise_ids else []
+            exercise_map = {exercise.id: exercise for exercise in owned_exercises}
+            if len(exercise_map) != len(exercise_ids):
+                raise ValueError('One or more exercises are invalid')
 
         plan.name = name[:120]
         plan.description = (data.get('description') or '').strip() or None
@@ -346,7 +433,7 @@ def save_fitness_plan():
         plan.start_date = parse_optional_date(data.get('startDate'), 'startDate')
         plan.tracked_person_id = tracked_person.id if tracked_person else None
         should_activate = bool(data.get('isActive', plan.is_active))
-        if should_activate:
+        if should_activate and not plan.is_active:
             db.session.flush()
             FitnessPlan.query.filter(
                 FitnessPlan.user_identity == user_identity,
@@ -354,11 +441,11 @@ def save_fitness_plan():
             ).update({'is_active': False}, synchronize_session=False)
         plan.is_active = should_activate
 
-        if plan.id:
+        if plan.id and replace_days:
             plan.days.clear()
             db.session.flush()
 
-        for day_data in days_payload:
+        for day_data in days_payload if replace_days else []:
             weekday = parse_int(day_data.get('weekday'), 'weekday', 1, 7, True)
             day = FitnessPlanDay(
                 plan=plan,

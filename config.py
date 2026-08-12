@@ -25,7 +25,13 @@ SQLALCHEMY_DATABASE_URI = DATABASE_DEFAULT
 # 处理 Supabase PgBouncer 连接
 SQLALCHEMY_ENGINE_OPTIONS = {
     'pool_pre_ping': True,
-    'pool_recycle': 300,
+    # Supabase's pooler already manages server-side connections. Recycling every
+    # five minutes caused user-facing writes to pay the full TLS/database cold
+    # connection cost, which can exceed ten seconds from this region.
+    'pool_recycle': 1800,
+    'pool_size': 2,
+    'max_overflow': 2,
+    'pool_timeout': 20,
 }
 
 # JWT 配置
