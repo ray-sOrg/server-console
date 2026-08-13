@@ -36,6 +36,11 @@ class FitnessSessionExercise(db.Model):
         nullable=True,
         index=True,
     )
+    source_exercise = db.relationship(
+        'FitnessExercise',
+        foreign_keys=[exercise_id],
+        lazy='joined',
+    )
     sort_order = db.Column(db.Integer, nullable=False)
     exercise_name = db.Column(db.String(120), nullable=False)
     category = db.Column(db.String(20), nullable=False)
@@ -83,6 +88,7 @@ class FitnessSessionExercise(db.Model):
             'metricType': self.metric_type,
             'instructions': self.instructions,
             'cautions': self.cautions,
+            'media': self.source_exercise.media if self.source_exercise else None,
             'targetSets': self.target_sets,
             'repsMin': self.reps_min,
             'repsMax': self.reps_max,

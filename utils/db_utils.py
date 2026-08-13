@@ -19,6 +19,9 @@ REQUIRED_COLUMNS = {
         'pain_flag': 'BOOLEAN NOT NULL DEFAULT FALSE',
         'pain_notes': 'TEXT',
     },
+    'fitness_exercise': {
+        'media': 'JSONB',
+    },
 }
 
 

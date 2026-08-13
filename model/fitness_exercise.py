@@ -30,6 +30,7 @@ class FitnessExercise(db.Model):
     instructions = db.Column(db.Text, nullable=True)
     cautions = db.Column(db.Text, nullable=True)
     progression_notes = db.Column(db.Text, nullable=True)
+    media = db.Column(db.JSON, nullable=True)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     updated_at = db.Column(
@@ -51,6 +52,7 @@ class FitnessExercise(db.Model):
             'instructions': self.instructions,
             'cautions': self.cautions,
             'progressionNotes': self.progression_notes,
+            'media': self.media,
             'isActive': self.is_active,
             'createdAt': self.created_at.isoformat() if self.created_at else None,
             'updatedAt': self.updated_at.isoformat() if self.updated_at else None,

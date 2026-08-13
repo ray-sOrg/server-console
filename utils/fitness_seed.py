@@ -4,6 +4,7 @@ from model.fitness_plan_day import FitnessPlanDay
 from model.fitness_plan_exercise import FitnessPlanExercise
 from model.fitness_session import FitnessSession
 from model.fitness_session_exercise import FitnessSessionExercise
+from utils.fitness_media import media_for_exercise
 
 
 DEFAULT_PLAN_NAME = '12周力量与俄挺计划'
@@ -108,6 +109,9 @@ def ensure_default_fitness_data(db, user_identity):
     for row in EXERCISES:
         name, category, muscle, equipment, metric, instructions, cautions, progression = row
         if name in by_name:
+            media = media_for_exercise(name)
+            if by_name[name].media != media:
+                by_name[name].media = media
             continue
         exercise = FitnessExercise(
             user_identity=user_identity,
@@ -119,6 +123,7 @@ def ensure_default_fitness_data(db, user_identity):
             instructions=instructions,
             cautions=cautions,
             progression_notes=progression,
+            media=media_for_exercise(name),
         )
         db.session.add(exercise)
         by_name[name] = exercise
