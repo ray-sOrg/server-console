@@ -68,7 +68,7 @@ WEEK = [
     ]),
     (3, '拉力A', '引体 / 划船 / 二头 + 俄挺技能', False, 85, [
         ('俄挺团身收膝', 4, None, (8, 15), None, 60, '先加时间', '选择能稳定停住的版本。'),
-        ('引体向上', 5, (3, 8), None, (1, 2), 180, '先加总次数', '自重能完成3次起步。'),
+        ('引体向上', 5, (3, 8), None, (1, 2), 120, '先加总次数', '自重能完成3次起步。'),
         ('杠铃划船', 4, (6, 10), None, (1, 2), 120, '双进阶', '躯干角度保持不变。'),
         ('单臂哑铃划船', 3, (8, 12), None, (1, 2), 90, '双进阶', '每侧分别完成。'),
         ('俯身后束飞鸟', 3, (12, 20), None, (1, 2), 75, '先加次数', '轻重量高控制。'),
@@ -130,22 +130,24 @@ def ensure_default_fitness_data(db, user_identity):
 
     db.session.flush()
 
-    # This training plan uses a two-minute rest for barbell squats. Keep
-    # existing plan copies and an unfinished workout aligned with that choice.
-    squat = by_name.get('杠铃深蹲')
-    if squat:
-        plan_squats = FitnessPlanExercise.query.join(FitnessPlanDay).join(FitnessPlan).filter(
+    # Keep current plans and unfinished workouts aligned with rest-time
+    # refinements made after using the program in real training sessions.
+    for exercise_name in ('杠铃深蹲', '引体向上'):
+        exercise = by_name.get(exercise_name)
+        if not exercise:
+            continue
+        plan_items = FitnessPlanExercise.query.join(FitnessPlanDay).join(FitnessPlan).filter(
             FitnessPlan.user_identity == user_identity,
-            FitnessPlanExercise.exercise_id == squat.id,
+            FitnessPlanExercise.exercise_id == exercise.id,
             FitnessPlanExercise.rest_seconds != 120,
         ).all()
-        active_session_squats = FitnessSessionExercise.query.join(FitnessSession).filter(
+        active_session_items = FitnessSessionExercise.query.join(FitnessSession).filter(
             FitnessSession.user_identity == user_identity,
             FitnessSession.status == 'in_progress',
-            FitnessSessionExercise.exercise_id == squat.id,
+            FitnessSessionExercise.exercise_id == exercise.id,
             FitnessSessionExercise.rest_seconds != 120,
         ).all()
-        for item in [*plan_squats, *active_session_squats]:
+        for item in [*plan_items, *active_session_items]:
             item.rest_seconds = 120
 
     existing_plan = FitnessPlan.query.filter_by(
