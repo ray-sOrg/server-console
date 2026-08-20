@@ -42,6 +42,7 @@ class FitnessSet(db.Model):
     rir = db.Column(db.Integer, nullable=True)
     completed = db.Column(db.Boolean, nullable=False, default=False)
     completed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    deferred_at = db.Column(db.DateTime(timezone=True), nullable=True)
     notes = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=datetime.utcnow)
     updated_at = db.Column(
@@ -65,6 +66,7 @@ class FitnessSet(db.Model):
             'rir': self.rir,
             'completed': self.completed,
             'completedAt': self.completed_at.isoformat() if self.completed_at else None,
+            'deferredAt': self.deferred_at.isoformat() if self.deferred_at else None,
             'notes': self.notes,
             'createdAt': self.created_at.isoformat() if self.created_at else None,
             'updatedAt': self.updated_at.isoformat() if self.updated_at else None,

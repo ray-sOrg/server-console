@@ -1,0 +1,2 @@
+ALTER TABLE fitness_set
+    ADD COLUMN IF NOT EXISTS deferred_at TIMESTAMPTZ;
