@@ -254,20 +254,32 @@ def owned_session(session_id, user_identity):
 
 
 def next_actionable_set(session):
-    """Return the next fresh set, then the oldest temporarily deferred set."""
+    """Return a manually resumed set, then fresh and deferred work."""
+    activated = []
+    first_fresh = None
     deferred = []
     for exercise in sorted(session.exercises, key=lambda item: item.sort_order):
         for fitness_set in sorted(exercise.sets, key=lambda item: item.set_number):
             if fitness_set.completed:
                 continue
+            if fitness_set.activated_at is not None:
+                activated.append((fitness_set.activated_at, fitness_set))
+                continue
+            if fitness_set.deferred_at is None and first_fresh is None:
+                first_fresh = fitness_set
+                continue
             if fitness_set.deferred_at is None:
-                return fitness_set
+                continue
             deferred.append((
                 fitness_set.deferred_at,
                 exercise.sort_order,
                 fitness_set.set_number,
                 fitness_set,
             ))
+    if activated:
+        return max(activated, key=lambda item: item[0])[1]
+    if first_fresh is not None:
+        return first_fresh
     return min(deferred, default=(None, None, None, None))[3]
 
 
@@ -787,6 +799,7 @@ def save_fitness_set():
         fitness_set.completed = completed
         fitness_set.completed_at = datetime.utcnow() if completed else None
         fitness_set.deferred_at = None
+        fitness_set.activated_at = None
         fitness_set.notes = (data.get('notes') or '').strip() or None
 
         session_exercise = fitness_set.session_exercise
@@ -834,6 +847,46 @@ def defer_fitness_set():
             raise ValueError('Only the current set can be deferred')
 
         fitness_set.deferred_at = datetime.utcnow()
+        fitness_set.activated_at = None
+        db.session.commit()
+        return success(serialize_session(session, include_previous=True))
+    except ValueError as error:
+        db.session.rollback()
+        return failure(str(error))
+    except Exception as error:
+        db.session.rollback()
+        return failure(str(error))
+
+
+@fitness_api_pb.route('/fitness/session/set/activate', methods=['POST'])
+@jwt_required()
+def activate_fitness_set():
+    user_identity = get_jwt_identity()
+    data = request.get_json() or {}
+    try:
+        set_id = parse_int(data.get('id'), 'id', 1, required=True)
+        fitness_set = FitnessSet.query.join(
+            FitnessSessionExercise,
+            FitnessSet.session_exercise_id == FitnessSessionExercise.id,
+        ).join(
+            FitnessSession,
+            FitnessSessionExercise.session_id == FitnessSession.id,
+        ).filter(
+            FitnessSet.id == set_id,
+            FitnessSession.user_identity == user_identity,
+        ).first()
+        if not fitness_set:
+            return failure('Fitness set not found', code=404)
+        if fitness_set.completed or fitness_set.deferred_at is None:
+            raise ValueError('Only a deferred set can be resumed')
+
+        session = fitness_set.session_exercise.session
+        if session.status != 'in_progress':
+            raise ValueError('Only an active workout can resume sets')
+        for exercise in session.exercises:
+            for session_set in exercise.sets:
+                session_set.activated_at = None
+        fitness_set.activated_at = datetime.utcnow()
         db.session.commit()
         return success(serialize_session(session, include_previous=True))
     except ValueError as error:
