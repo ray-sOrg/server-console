@@ -782,9 +782,6 @@ def save_fitness_set():
         rir = parse_int(data.get('rir'), 'rir', 0, 10)
         metric_type = fitness_set.session_exercise.metric_type
         session = fitness_set.session_exercise.session
-        active_set = next_actionable_set(session)
-        if completed and (not active_set or active_set.id != fitness_set.id):
-            raise ValueError('Complete or defer the current set first')
         if completed and metric_type == 'reps' and actual_reps is None:
             raise ValueError('actualReps is required for this exercise')
         if completed and metric_type == 'duration' and actual_duration is None:
@@ -842,9 +839,6 @@ def defer_fitness_set():
         session = fitness_set.session_exercise.session
         if session.status != 'in_progress':
             raise ValueError('Only an active workout can defer sets')
-        active_set = next_actionable_set(session)
-        if not active_set or active_set.id != fitness_set.id:
-            raise ValueError('Only the current set can be deferred')
 
         fitness_set.deferred_at = datetime.utcnow()
         fitness_set.activated_at = None
