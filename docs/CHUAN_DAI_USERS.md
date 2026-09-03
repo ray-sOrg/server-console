@@ -18,9 +18,21 @@ from these console permissions.
   Returns `{code: 200, data: {items, total, pageNumber, pageSize}, message}`.
 - `GET /api/chuan-dai/user/:id`: returns the current profile or business code
   404 if it no longer exists.
+- `POST /api/chuan-dai/user/:id/reset-password`: accepts `newPassword` and
+  `confirmPassword`. Requires 6–64 UTF-16 code units, at least one ASCII letter
+  and digit, and matching confirmation. Cookie authentication also requires
+  the JWT `X-CSRF-TOKEN` header. No old password is needed for this admin action.
+  Uses Argon2id PHC hashes compatible with H5's `@node-rs/argon2` verifier.
+  Updates the password and `updatedAt`, removes all of the target user's H5
+  sessions and clears their account login failure key in a single transaction.
+  Other users' sessions and shared IP rate limits are preserved. Returns only
+  `{code: 200, data: {id}, message}`; plaintext passwords and hashes are never
+  returned or written to application logs. Audit logs record the actor and
+  target IDs. IP throttling, if active, still expires on its normal schedule.
 
 Responses use the existing business-code convention. Only explicitly mapped
-profile fields are queried; passwords, login IPs and sessions are excluded.
+profile fields are queried for list/detail; the password hash is deferred and
+excluded from serialization. Login IPs and sessions are not returned.
 Timestamp fields include UTC offsets. Birthday is returned as a date.
 
 ## Release
@@ -31,7 +43,8 @@ and does not add a `User` table to the console database.
 
 After release, sign in as a console administrator and open
 `https://console.tt829.cn/chuan-dai/users`. Check the list, search, role filters,
-pagination and details. A failed request must show an error and retry action,
+pagination and details. Use the row's **重置密码** button to set a new password
+without knowing the old one. A failed request must show an error and retry action,
 not a successful empty list. Users continue to register through the H5 app.
 
 ## Verification
@@ -45,4 +58,8 @@ Run offline tests with:
 These tests use separate in-memory SQLite databases and never connect to the
 configured production database. They cover admin authorization, database
 isolation, paging, filters, wildcard escaping, empty results, invalid input,
-safe profile serialization and database failure handling.
+safe profile serialization and database failure handling. Reset tests also cover
+password validation, unchanged unrelated users, cookie CSRF protection and
+transaction rollback if session revocation fails. New hashes were additionally
+verified with the H5 application's actual `@node-rs/argon2` implementation:
+the new password succeeds and the old password fails.
