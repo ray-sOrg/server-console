@@ -1,173 +1,142 @@
-from flask import Blueprint, jsonify, request
+from uuid import uuid4, UUID
+
+from flask import Blueprint, current_app, jsonify, request
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from model.dish import Dish
-import config
 
-# 创建餐馆数据库引擎
+import config
+from model.dish import Dish, DishNutrition
+from utils.dish_validation import dish_payload
+
+
 restaurant_engine = create_engine(
-    config.DATABASE_RESTAURANT,
-    pool_pre_ping=True,
-    pool_recycle=300
+    config.DATABASE_RESTAURANT, pool_pre_ping=True, pool_recycle=300,
 )
 RestaurantSession = sessionmaker(bind=restaurant_engine)
-
 dish_api_pb = Blueprint('dish_api', __name__)
 
 
 def get_restaurant_session():
-    """获取餐馆数据库的 session"""
     return RestaurantSession()
+
+
+def response(data=None, code=200, message='Success'):
+    # Keep the existing business-code convention for Console callers.
+    return jsonify({'code': code, 'message': message, 'data': data}), 200
+
+
+def server_error():
+    current_app.logger.exception('Restaurant dish operation failed')
+    return response(code=500, message='菜品操作失败，请稍后重试')
+
+
+def apply_values(dish, values):
+    for field, value in values.items():
+        if field == 'nutrition':
+            if value is None:
+                dish.nutrition = None
+            elif dish.nutrition is None:
+                dish.nutrition = DishNutrition(**value)
+            else:
+                for key, nutrient in value.items():
+                    setattr(dish.nutrition, key, nutrient)
+        else:
+            setattr(dish, field, value)
 
 
 @dish_api_pb.route('/dish/list', methods=['GET'])
 def get_dish_list():
-    """获取菜品列表"""
     try:
-        session = get_restaurant_session()
-        dishes = session.query(Dish).order_by(Dish.createdAt.desc()).all()
-        result = [d.to_dict() for d in dishes]
-        session.close()
-        return jsonify({
-            "code": 200, 
-            "message": "Success", 
-            "data": result
-        }), 200
-    except Exception as e:
-        return jsonify({"code": 500, "message": str(e), "data": []}), 200
+        with get_restaurant_session() as session:
+            dishes = session.query(Dish).order_by(Dish.createdAt.desc()).all()
+            return response([dish.to_dict() for dish in dishes])
+    except Exception:
+        return server_error()
 
 
 @dish_api_pb.route('/dish/<dish_id>', methods=['GET'])
 def get_dish(dish_id):
-    """获取单个菜品详情"""
     try:
-        session = get_restaurant_session()
-        dish = session.query(Dish).get(dish_id)
-        if not dish:
-            session.close()
-            return jsonify({"code": 404, "message": "Dish not found", "data": {}}), 200
-        result = dish.to_dict()
-        session.close()
-        return jsonify({"code": 200, "message": "Success", "data": result}), 200
-    except Exception as e:
-        return jsonify({"code": 500, "message": str(e), "data": {}}), 200
+        dish_id = str(UUID(dish_id))
+        with get_restaurant_session() as session:
+            dish = session.get(Dish, dish_id)
+            if dish is None:
+                return response(code=404, message='菜品不存在')
+            return response(dish.to_dict())
+    except ValueError as exc:
+        return response(code=400, message=str(exc))
+    except Exception:
+        return server_error()
 
 
 @dish_api_pb.route('/dish', methods=['POST'])
 def create_dish():
-    """创建菜品"""
-    data = request.get_json()
-    if not data:
-        return jsonify({"code": 500, "message": "No input data provided"}), 200
-    
     try:
-        session = get_restaurant_session()
-        dish = Dish(
-            id=data.get('id'),
-            name=data.get('name'),
-            nameEn=data.get('nameEn'),
-            description=data.get('description'),
-            descEn=data.get('descEn'),
-            price=data.get('price'),
-            image=data.get('image'),
-            category=data.get('category'),
-            isSpicy=data.get('isSpicy', False),
-            isVegetarian=data.get('isVegetarian', False),
-            isAvailable=data.get('isAvailable', True)
-        )
-        session.add(dish)
-        session.commit()
-        result = dish.to_dict()
-        session.close()
-        return jsonify({"code": 200, "message": "Success", "data": result}), 200
-    except Exception as e:
-        session.rollback()
-        session.close()
-        return jsonify({"code": 500, "message": str(e)}), 200
+        values = dish_payload(request.get_json(silent=True))
+        with get_restaurant_session() as session:
+            with session.begin():
+                dish = Dish(id=values.pop('id', str(uuid4())))
+                apply_values(dish, values)
+                session.add(dish)
+                session.flush()
+                result = dish.to_dict()
+            return response(result)
+    except ValueError as exc:
+        return response(code=400, message=str(exc))
+    except Exception:
+        return server_error()
 
 
 @dish_api_pb.route('/dish/<dish_id>', methods=['PUT'])
 def update_dish(dish_id):
-    """更新菜品"""
-    data = request.get_json()
-    if not data:
-        return jsonify({"code": 500, "message": "No input data provided"}), 200
-    
     try:
-        session = get_restaurant_session()
-        dish = session.query(Dish).get(dish_id)
-        if not dish:
-            session.close()
-            return jsonify({"code": 404, "message": "Dish not found"}), 200
-        
-        # 更新字段
-        if 'name' in data:
-            dish.name = data['name']
-        if 'nameEn' in data:
-            dish.nameEn = data['nameEn']
-        if 'description' in data:
-            dish.description = data['description']
-        if 'descEn' in data:
-            dish.descEn = data['descEn']
-        if 'price' in data:
-            dish.price = data['price']
-        if 'image' in data:
-            dish.image = data['image']
-        if 'category' in data:
-            dish.category = data['category']
-        if 'isSpicy' in data:
-            dish.isSpicy = data['isSpicy']
-        if 'isVegetarian' in data:
-            dish.isVegetarian = data['isVegetarian']
-        if 'isAvailable' in data:
-            dish.isAvailable = data['isAvailable']
-        
-        session.commit()
-        result = dish.to_dict()
-        session.close()
-        return jsonify({"code": 200, "message": "Success", "data": result}), 200
-    except Exception as e:
-        session.rollback()
-        session.close()
-        return jsonify({"code": 500, "message": str(e)}), 200
+        dish_id = str(UUID(dish_id))
+        with get_restaurant_session() as session:
+            with session.begin():
+                dish = session.get(Dish, dish_id)
+                if dish is None:
+                    return response(code=404, message='菜品不存在')
+                apply_values(dish, dish_payload(request.get_json(silent=True), dish))
+                session.flush()
+                result = dish.to_dict()
+            return response(result)
+    except ValueError as exc:
+        return response(code=400, message=str(exc))
+    except Exception:
+        return server_error()
 
 
 @dish_api_pb.route('/dish/<dish_id>', methods=['DELETE'])
 def delete_dish(dish_id):
-    """删除菜品"""
     try:
-        session = get_restaurant_session()
-        dish = session.query(Dish).get(dish_id)
-        if not dish:
-            session.close()
-            return jsonify({"code": 404, "message": "Dish not found"}), 200
-        
-        session.delete(dish)
-        session.commit()
-        session.close()
-        return jsonify({"code": 200, "message": "Success", "data": {}}), 200
-    except Exception as e:
-        session.rollback()
-        session.close()
-        return jsonify({"code": 500, "message": str(e)}), 200
+        dish_id = str(UUID(dish_id))
+        with get_restaurant_session() as session:
+            with session.begin():
+                dish = session.get(Dish, dish_id)
+                if dish is None:
+                    return response(code=404, message='菜品不存在')
+                session.delete(dish)
+            return response({})
+    except ValueError as exc:
+        return response(code=400, message=str(exc))
+    except Exception:
+        return server_error()
 
 
 @dish_api_pb.route('/dish/<dish_id>/toggle', methods=['POST'])
 def toggle_dish_availability(dish_id):
-    """切换菜品上下架状态"""
     try:
-        session = get_restaurant_session()
-        dish = session.query(Dish).get(dish_id)
-        if not dish:
-            session.close()
-            return jsonify({"code": 404, "message": "Dish not found"}), 200
-        
-        dish.isAvailable = not dish.isAvailable
-        session.commit()
-        result = dish.to_dict()
-        session.close()
-        return jsonify({"code": 200, "message": "Success", "data": result}), 200
-    except Exception as e:
-        session.rollback()
-        session.close()
-        return jsonify({"code": 500, "message": str(e)}), 200
+        dish_id = str(UUID(dish_id))
+        with get_restaurant_session() as session:
+            with session.begin():
+                dish = session.get(Dish, dish_id)
+                if dish is None:
+                    return response(code=404, message='菜品不存在')
+                dish.isAvailable = not dish.isAvailable
+                session.flush()
+                result = dish.to_dict()
+            return response(result)
+    except ValueError as exc:
+        return response(code=400, message=str(exc))
+    except Exception:
+        return server_error()
