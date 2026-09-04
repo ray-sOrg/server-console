@@ -40,7 +40,8 @@ AUTH_COOKIE_NAMES = (
     'refresh_token_cookie',
     'csrf_refresh_token',
 )
-OIDC_STATE_COOKIE = 'console_oidc_state'
+OIDC_STATE_COOKIE = 'console_oidc_state_v2'
+LEGACY_OIDC_STATE_COOKIE = 'console_oidc_state'
 OIDC_ATTEMPT_LIFETIME = timedelta(minutes=10)
 
 
@@ -135,6 +136,10 @@ def oidc_login():
         samesite='Lax', path='/api/auth/oidc/callback',
         max_age=int(OIDC_ATTEMPT_LIFETIME.total_seconds()),
     )
+    # Remove the pre-v2 cookie so stale values cannot win when duplicate
+    # cookies with different paths are sent by the browser.
+    response.set_cookie(LEGACY_OIDC_STATE_COOKIE, '', expires=0, path='/')
+    response.set_cookie(LEGACY_OIDC_STATE_COOKIE, '', expires=0, path='/api/auth/oidc/callback')
     return response
 
 
@@ -201,6 +206,8 @@ def oidc_callback():
             OIDC_STATE_COOKIE, '', expires=0,
             path='/api/auth/oidc/callback', httponly=True,
         )
+        response.set_cookie(LEGACY_OIDC_STATE_COOKIE, '', expires=0, path='/')
+        response.set_cookie(LEGACY_OIDC_STATE_COOKIE, '', expires=0, path='/api/auth/oidc/callback')
         set_session_cookies(
             response, access_token, refresh_token,
             access_lifetime, refresh_lifetime,

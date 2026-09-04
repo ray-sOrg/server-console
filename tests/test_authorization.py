@@ -222,7 +222,7 @@ class AuthorizationTests(unittest.TestCase):
             'https://auth.example/realms/test/protocol/openid-connect/auth?',
         ))
         self.assertIn('code_challenge_method=S256', response.location)
-        self.assertIn('console_oidc_state=', response.headers['Set-Cookie'])
+        self.assertIn('console_oidc_state_v2=', response.headers['Set-Cookie'])
         attempt = OidcLoginAttempt.query.one()
         self.assertEqual(attempt.target_app, 'weight')
         self.assertNotIn(attempt.code_verifier, response.location)
