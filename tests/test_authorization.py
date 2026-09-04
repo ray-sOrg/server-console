@@ -11,6 +11,7 @@ from flask_jwt_extended import create_access_token
 import config
 from extensions import db, jwt
 from model.auth_session import AuthSession
+from model.oidc_login_attempt import OidcLoginAttempt
 from model.user import User
 from model.wedding_music import WeddingMusic
 from model.wedding_photo_wall import WeddingPhotoWall
@@ -18,7 +19,7 @@ from model.tracked_person import TrackedPerson
 from model.weight_record import WeightRecord
 from utils.auth_session_utils import utc_now
 from utils.jwt_errors import register_jwt_errors
-from api import user_api, wedding_api, test_api, oss_api, image_api, upload_api, weight_api
+from api import auth_api, user_api, wedding_api, test_api, oss_api, image_api, upload_api, weight_api
 
 with patch.object(config, 'DATABASE_RESTAURANT', 'sqlite://'):
     from api import dish_api
@@ -32,6 +33,10 @@ class AuthorizationTests(unittest.TestCase):
             SQLALCHEMY_DATABASE_URI='sqlite://',
             JWT_SECRET_KEY='offline-test-key-at-least-32-characters',
             JWT_TOKEN_LOCATION=['headers'],
+            OIDC_ISSUER='https://auth.example/realms/test',
+            OIDC_CLIENT_ID='server-console',
+            OIDC_CLIENT_SECRET='test-secret',
+            OIDC_CALLBACK_URL='https://api.example/api/auth/oidc/callback',
         )
         db.init_app(self.app)
         jwt.init_app(self.app)
@@ -44,12 +49,13 @@ class AuthorizationTests(unittest.TestCase):
             (image_api.image_api_pb, '/api'),
             (upload_api.upload_api_pb, '/api'),
             (weight_api.weight_api_pb, '/api'),
+            (auth_api.auth_api_pb, '/api'),
             (dish_api.dish_api_pb, '/api/chuan-dai'),
         ):
             self.app.register_blueprint(blueprint, url_prefix=prefix)
         self.context = self.app.app_context()
         self.context.push()
-        for model in (User, AuthSession, WeddingMusic, WeddingPhotoWall,
+        for model in (User, AuthSession, OidcLoginAttempt, WeddingMusic, WeddingPhotoWall,
                       TrackedPerson, WeightRecord):
             model.__table__.create(db.engine)
         for name, role in (
@@ -205,6 +211,21 @@ class AuthorizationTests(unittest.TestCase):
         }).get_json()
         self.assertNotEqual(result['code'], 200)
         self.assertEqual(WeightRecord.query.count(), 2)
+
+    def test_oidc_login_validates_target_and_persists_pkce_attempt(self):
+        self.assertEqual(
+            self.client.get('/api/auth/oidc/login?app=unknown').status_code, 400,
+        )
+        response = self.client.get('/api/auth/oidc/login?app=weight')
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.location.startswith(
+            'https://auth.example/realms/test/protocol/openid-connect/auth?',
+        ))
+        self.assertIn('code_challenge_method=S256', response.location)
+        self.assertIn('console_oidc_state=', response.headers['Set-Cookie'])
+        attempt = OidcLoginAttempt.query.one()
+        self.assertEqual(attempt.target_app, 'weight')
+        self.assertNotIn(attempt.code_verifier, response.location)
 
 
 if __name__ == '__main__':

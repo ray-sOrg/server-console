@@ -48,6 +48,14 @@ JWT_COOKIE_SAMESITE = 'Lax'
 JWT_REFRESH_COOKIE_PATH = '/api/auth'
 JWT_REFRESH_CSRF_COOKIE_PATH = '/'
 
+# Unified OIDC identity provider. The client secret is always injected at runtime.
+OIDC_ISSUER = os.getenv('OIDC_ISSUER', '')
+OIDC_CLIENT_ID = os.getenv('OIDC_CLIENT_ID', '')
+OIDC_CLIENT_SECRET = os.getenv('OIDC_CLIENT_SECRET', '')
+OIDC_CALLBACK_URL = os.getenv(
+    'OIDC_CALLBACK_URL', 'https://api.tt829.cn/api/auth/oidc/callback',
+)
+
 # Celery 配置
 CELERY_RESULT_BACKEND = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 CELERY_BROKER_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')

@@ -1,5 +1,8 @@
 import bcrypt
-from flask import Blueprint, current_app, jsonify, make_response, request
+import jwt as pyjwt
+import requests
+from datetime import timedelta
+from flask import Blueprint, current_app, jsonify, make_response, redirect, request
 from flask_jwt_extended import (
     create_access_token,
     create_refresh_token,
@@ -15,6 +18,7 @@ from flask_jwt_extended import (
 
 from extensions import db
 from model.auth_session import AuthSession
+from model.oidc_login_attempt import OidcLoginAttempt
 from model.user import User
 from utils.auth_session_utils import (
     ACCESS_TOKEN_LIFETIME,
@@ -23,7 +27,9 @@ from utils.auth_session_utils import (
     session_is_active,
     session_remaining,
     utc_now,
+    ensure_utc,
 )
+from utils.oidc import APP_TARGETS, authorization_url, digest, random_urlsafe
 
 
 auth_api_pb = Blueprint('auth_api', __name__)
@@ -34,6 +40,15 @@ AUTH_COOKIE_NAMES = (
     'refresh_token_cookie',
     'csrf_refresh_token',
 )
+OIDC_STATE_COOKIE = 'console_oidc_state'
+OIDC_ATTEMPT_LIFETIME = timedelta(minutes=10)
+
+
+def oidc_setting(name):
+    value = current_app.config.get(name)
+    if not value:
+        raise RuntimeError(f'{name} is not configured')
+    return value
 
 
 def clear_legacy_root_cookies(response):
@@ -92,6 +107,111 @@ def set_session_cookies(response, access_token, refresh_token, access_lifetime, 
         refresh_token,
         max_age=max_age_seconds(refresh_lifetime),
     )
+
+
+@auth_api_pb.route('/auth/oidc/login', methods=['GET'])
+def oidc_login():
+    target_app = request.args.get('app', 'console')
+    if target_app not in APP_TARGETS:
+        return jsonify({'code': 400, 'message': 'Unknown application', 'data': {}}), 400
+    state = random_urlsafe()
+    nonce = random_urlsafe()
+    verifier = random_urlsafe(64)
+    now = utc_now()
+    OidcLoginAttempt.query.filter(OidcLoginAttempt.expires_at <= now).delete()
+    db.session.add(OidcLoginAttempt(
+        state_hash=digest(state), code_verifier=verifier, nonce=nonce,
+        target_app=target_app, expires_at=now + OIDC_ATTEMPT_LIFETIME,
+    ))
+    db.session.commit()
+    location = authorization_url(
+        oidc_setting('OIDC_ISSUER'), oidc_setting('OIDC_CLIENT_ID'),
+        oidc_setting('OIDC_CALLBACK_URL'), state, nonce, verifier,
+    )
+    response = redirect(location)
+    response.set_cookie(
+        OIDC_STATE_COOKIE, state, httponly=True,
+        secure=current_app.config.get('JWT_COOKIE_SECURE', False),
+        samesite='Lax', path='/api/auth/oidc/callback',
+        max_age=int(OIDC_ATTEMPT_LIFETIME.total_seconds()),
+    )
+    return response
+
+
+@auth_api_pb.route('/auth/oidc/callback', methods=['GET'])
+def oidc_callback():
+    state = request.args.get('state', '')
+    if not state or state != request.cookies.get(OIDC_STATE_COOKIE):
+        return jsonify({'code': 400, 'message': 'Invalid login state', 'data': {}}), 400
+    attempt = db.session.get(OidcLoginAttempt, digest(state))
+    if not attempt or ensure_utc(attempt.expires_at) <= utc_now():
+        return jsonify({'code': 400, 'message': 'Login request expired', 'data': {}}), 400
+
+    try:
+        issuer = oidc_setting('OIDC_ISSUER').rstrip('/')
+        token_response = requests.post(
+            issuer + '/protocol/openid-connect/token', timeout=15,
+            data={
+                'grant_type': 'authorization_code',
+                'code': request.args.get('code', ''),
+                'redirect_uri': oidc_setting('OIDC_CALLBACK_URL'),
+                'client_id': oidc_setting('OIDC_CLIENT_ID'),
+                'client_secret': oidc_setting('OIDC_CLIENT_SECRET'),
+                'code_verifier': attempt.code_verifier,
+            },
+        )
+        token_response.raise_for_status()
+        id_token = token_response.json()['id_token']
+        signing_key = pyjwt.PyJWKClient(
+            issuer + '/protocol/openid-connect/certs', timeout=15,
+        ).get_signing_key_from_jwt(id_token)
+        claims = pyjwt.decode(
+            id_token, signing_key.key, algorithms=['RS256'],
+            audience=oidc_setting('OIDC_CLIENT_ID'), issuer=issuer,
+        )
+        if claims.get('nonce') != attempt.nonce:
+            raise ValueError('OIDC nonce mismatch')
+        required_role, target_url = APP_TARGETS[attempt.target_app]
+        roles = claims.get('realm_access', {}).get('roles', [])
+        if required_role not in roles:
+            db.session.delete(attempt)
+            db.session.commit()
+            return redirect(target_url + '/?auth_error=forbidden')
+        user = User.query.filter_by(oidc_subject=claims['sub']).first()
+        if user is None:
+            db.session.delete(attempt)
+            db.session.commit()
+            return redirect(target_url + '/?auth_error=unmapped')
+
+        now = utc_now()
+        auth_session = AuthSession(
+            user_identity=user.username,
+            expires_at=now + REFRESH_TOKEN_LIFETIME,
+            last_used_at=now,
+        )
+        db.session.add(auth_session)
+        db.session.delete(attempt)
+        db.session.flush()
+        access_token, refresh_token, access_lifetime, refresh_lifetime = issue_session_tokens(
+            auth_session, now,
+        )
+        db.session.commit()
+        response = redirect(target_url)
+        response.set_cookie(
+            OIDC_STATE_COOKIE, '', expires=0,
+            path='/api/auth/oidc/callback', httponly=True,
+        )
+        set_session_cookies(
+            response, access_token, refresh_token,
+            access_lifetime, refresh_lifetime,
+        )
+        return response
+    except Exception:
+        current_app.logger.exception('OIDC callback failed')
+        db.session.rollback()
+        OidcLoginAttempt.query.filter_by(state_hash=digest(state)).delete()
+        db.session.commit()
+        return jsonify({'code': 400, 'message': 'Unified login failed', 'data': {}}), 400
 
 
 @auth_api_pb.route('/auth/login', methods=['POST'])

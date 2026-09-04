@@ -12,6 +12,7 @@ REQUIRED_COLUMNS = {
         'display_name': 'VARCHAR(100)',
         'height_cm': 'INTEGER',
         'birth_date': 'DATE',
+        'oidc_subject': 'VARCHAR(255)',
     },
     'fitness_session': {
         'readiness_score': 'SMALLINT',

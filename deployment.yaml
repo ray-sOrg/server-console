@@ -53,6 +53,23 @@ spec:
                 secretKeyRef:
                   name: server-console-secret
                   key: JWT_SECRET_KEY
+            - name: OIDC_ISSUER
+              valueFrom:
+                secretKeyRef:
+                  name: server-console-oidc
+                  key: issuer
+            - name: OIDC_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: server-console-oidc
+                  key: client-id
+            - name: OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: server-console-oidc
+                  key: client-secret
+            - name: OIDC_CALLBACK_URL
+              value: https://api.tt829.cn/api/auth/oidc/callback
             # Flask 环境
             - name: FLASK_ENV
               value: "production"
