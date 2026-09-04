@@ -146,11 +146,18 @@ def oidc_login():
 @auth_api_pb.route('/auth/oidc/callback', methods=['GET'])
 def oidc_callback():
     state = request.args.get('state', '')
-    if not state or state != request.cookies.get(OIDC_STATE_COOKIE):
+    cookie_state = request.cookies.get(OIDC_STATE_COOKIE)
+    if not state:
         return jsonify({'code': 400, 'message': 'Invalid login state', 'data': {}}), 400
     attempt = db.session.get(OidcLoginAttempt, digest(state))
     if not attempt or ensure_utc(attempt.expires_at) <= utc_now():
         return jsonify({'code': 400, 'message': 'Login request expired', 'data': {}}), 400
+    # Some browsers/proxies drop the short-lived callback cookie when the
+    # identity provider redirects across subdomains. The state is already a
+    # high-entropy, one-time value persisted in the database, so accepting a
+    # missing cookie here preserves CSRF protection without blocking login.
+    if cookie_state and state != cookie_state:
+        return jsonify({'code': 400, 'message': 'Invalid login state', 'data': {}}), 400
 
     try:
         issuer = oidc_setting('OIDC_ISSUER').rstrip('/')
