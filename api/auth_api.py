@@ -134,12 +134,13 @@ def oidc_login():
         OIDC_STATE_COOKIE, state, httponly=True,
         secure=current_app.config.get('JWT_COOKIE_SECURE', False),
         samesite='Lax', path='/api/auth/oidc/callback',
+        domain=current_app.config.get('JWT_COOKIE_DOMAIN'),
         max_age=int(OIDC_ATTEMPT_LIFETIME.total_seconds()),
     )
     # Remove the pre-v2 cookie so stale values cannot win when duplicate
     # cookies with different paths are sent by the browser.
-    response.set_cookie(LEGACY_OIDC_STATE_COOKIE, '', expires=0, path='/')
-    response.set_cookie(LEGACY_OIDC_STATE_COOKIE, '', expires=0, path='/api/auth/oidc/callback')
+    response.set_cookie(LEGACY_OIDC_STATE_COOKIE, '', expires=0, path='/', domain=current_app.config.get('JWT_COOKIE_DOMAIN'))
+    response.set_cookie(LEGACY_OIDC_STATE_COOKIE, '', expires=0, path='/api/auth/oidc/callback', domain=current_app.config.get('JWT_COOKIE_DOMAIN'))
     return response
 
 
@@ -212,9 +213,10 @@ def oidc_callback():
         response.set_cookie(
             OIDC_STATE_COOKIE, '', expires=0,
             path='/api/auth/oidc/callback', httponly=True,
+            domain=current_app.config.get('JWT_COOKIE_DOMAIN'),
         )
-        response.set_cookie(LEGACY_OIDC_STATE_COOKIE, '', expires=0, path='/')
-        response.set_cookie(LEGACY_OIDC_STATE_COOKIE, '', expires=0, path='/api/auth/oidc/callback')
+        response.set_cookie(LEGACY_OIDC_STATE_COOKIE, '', expires=0, path='/', domain=current_app.config.get('JWT_COOKIE_DOMAIN'))
+        response.set_cookie(LEGACY_OIDC_STATE_COOKIE, '', expires=0, path='/api/auth/oidc/callback', domain=current_app.config.get('JWT_COOKIE_DOMAIN'))
         set_session_cookies(
             response, access_token, refresh_token,
             access_lifetime, refresh_lifetime,
