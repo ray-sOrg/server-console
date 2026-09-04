@@ -7,6 +7,7 @@ from sqlalchemy.orm import sessionmaker
 import config
 from model.dish import Dish, DishNutrition
 from utils.dish_validation import dish_payload
+from utils.authorization import admin_required
 
 
 restaurant_engine = create_engine(
@@ -70,6 +71,7 @@ def get_dish(dish_id):
 
 
 @dish_api_pb.route('/dish', methods=['POST'])
+@admin_required
 def create_dish():
     try:
         values = dish_payload(request.get_json(silent=True))
@@ -88,6 +90,7 @@ def create_dish():
 
 
 @dish_api_pb.route('/dish/<dish_id>', methods=['PUT'])
+@admin_required
 def update_dish(dish_id):
     try:
         dish_id = str(UUID(dish_id))
@@ -107,6 +110,7 @@ def update_dish(dish_id):
 
 
 @dish_api_pb.route('/dish/<dish_id>', methods=['DELETE'])
+@admin_required
 def delete_dish(dish_id):
     try:
         dish_id = str(UUID(dish_id))
@@ -124,6 +128,7 @@ def delete_dish(dish_id):
 
 
 @dish_api_pb.route('/dish/<dish_id>/toggle', methods=['POST'])
+@admin_required
 def toggle_dish_availability(dish_id):
     try:
         dish_id = str(UUID(dish_id))

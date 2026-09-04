@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify, request
-from flask_jwt_extended import jwt_required
+from utils.authorization import admin_required
 from model.image import Image
 from config import access_key_id, access_key_secret, bucket_name
 import base64
@@ -18,7 +18,7 @@ endpoint = f"https://{bucket_name}.{region}.aliyuncs.com"
 
 
 @oss_api_pb.route('/oss/credentials', methods=['GET'])
-@jwt_required()
+@admin_required
 def get_oss_credentials():
     file_type = request.args.get('type')
     # 根据文件类型动态生成 upload_path
@@ -57,7 +57,7 @@ def get_oss_credentials():
 
 
 @oss_api_pb.route('/oss/images/list', methods=['GET'])
-@jwt_required()
+@admin_required
 def get_oss_images_list():
     page_number = request.args.get('pageNumber', 1, type=int)
     page_size = request.args.get('pageSize', 20, type=int)

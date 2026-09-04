@@ -1,10 +1,11 @@
 import time
 from datetime import datetime
 import bcrypt
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 from model.user import User
 from extensions import db
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from utils.authorization import admin_required, forbidden
 
 user_api_pb = Blueprint('user_api', __name__)
 
@@ -22,9 +23,11 @@ def serialize_user(user):
 
 
 @user_api_pb.route('/user/add', methods=['POST'])
-@jwt_required()
+@admin_required
 def add_user():
-    data = request.json
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'code': 400, 'message': '请提供用户信息', 'data': {}}), 200
     username = data.get('username')
     password = data.get('password')
     role = data.get('role')
@@ -41,6 +44,9 @@ def add_user():
     if role not in ('super_admin', 'admin', 'user'):
         return jsonify({"code": 500, "message": "Bad Request", "data": "Invalid role specified"}), 200
 
+    if role != 'user' and g.console_actor.role != 'super_admin':
+        return forbidden('仅超级管理员可创建管理员账号')
+
     # 创建并添加新用户
     # 登录接口使用 bcrypt 校验，新建账号保持相同哈希方案。
     password_hashed = bcrypt.hashpw(
@@ -55,7 +61,7 @@ def add_user():
 
 
 @user_api_pb.route('/user/list', methods=['GET'])
-@jwt_required()
+@admin_required
 def get_user_list():
     page_number = request.args.get('pageNumber', 1, type=int)
     page_size = request.args.get('pageSize', 10, type=int)
@@ -77,9 +83,11 @@ def get_user_list():
 
 
 @user_api_pb.route('/user/delete', methods=['POST'])
-@jwt_required()
+@admin_required
 def delete_user():
-    data = request.json
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'code': 400, 'message': '请提供用户信息', 'data': {}}), 200
     uuid = data.get('uuid', '')
     if not uuid:
         return jsonify({"code": 500, "message": "Bad Request", "data": "Missing uuid"}), 200
@@ -88,6 +96,11 @@ def delete_user():
         user = User.query.filter_by(uid=uuid).first()
         if not user:
             return jsonify({"code": 500, "message": "User not found", "data": {}}), 200
+
+        if user.id == g.console_actor.id:
+            return forbidden('不能删除当前登录账号')
+        if user.role != 'user' and g.console_actor.role != 'super_admin':
+            return forbidden('仅超级管理员可删除管理员账号')
 
         db.session.delete(user)
         db.session.commit()

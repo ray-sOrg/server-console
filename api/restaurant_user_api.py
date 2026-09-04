@@ -1,5 +1,4 @@
 """Console-only access to registered Chuan Dai users."""
-from functools import wraps
 from datetime import datetime, timezone
 from hashlib import sha256
 import re
@@ -7,29 +6,18 @@ from uuid import UUID
 
 from argon2 import PasswordHasher
 from flask import Blueprint, current_app, request
-from flask_jwt_extended import get_jwt_identity, jwt_required
+from flask_jwt_extended import get_jwt_identity
 from sqlalchemy import delete, or_
 
 from api.dish_api import get_restaurant_session, response
 from model.restaurant_user import (
     RestaurantAuthRateLimit, RestaurantSession, RestaurantUser,
 )
-from model.user import User
+from utils.authorization import admin_required
 
 
 restaurant_user_api_pb = Blueprint('restaurant_user_api', __name__)
 password_hasher = PasswordHasher(memory_cost=19456, time_cost=3, parallelism=1)
-
-
-def admin_required(fn):
-    @wraps(fn)
-    @jwt_required()
-    def wrapped(*args, **kwargs):
-        user = User.query.filter_by(username=get_jwt_identity()).first()
-        if user is None or user.role not in ('admin', 'super_admin'):
-            return response(code=403, message='仅管理员可管理川傣用户')
-        return fn(*args, **kwargs)
-    return wrapped
 
 
 def positive_integer(name, default, maximum):

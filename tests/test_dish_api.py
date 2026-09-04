@@ -3,10 +3,13 @@ import unittest
 from unittest.mock import patch
 
 from flask import Flask
+from flask_jwt_extended import JWTManager, create_access_token
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import config
+from extensions import db
+from model.user import User
 from model.dish import Dish, DishNutrition, RestaurantBase
 from utils.dish_validation import dish_payload, nutrition_payload
 
@@ -30,11 +33,29 @@ class DishApiTests(unittest.TestCase):
         self.session_patch = patch.object(dish_api, 'RestaurantSession', self.session)
         self.session_patch.start()
         app = Flask(__name__)
+        app.config.update(
+            SQLALCHEMY_DATABASE_URI='sqlite://',
+            JWT_SECRET_KEY='offline-test-key-at-least-32-characters',
+            JWT_TOKEN_LOCATION=['headers'],
+        )
+        db.init_app(app)
+        JWTManager(app)
+        self.context = app.app_context()
+        self.context.push()
+        User.__table__.create(db.engine)
+        db.session.add(User(username='dish-admin', password='unused', role='admin'))
+        db.session.commit()
         app.register_blueprint(dish_api.dish_api_pb, url_prefix='/api/chuan-dai')
         self.client = app.test_client()
+        self.client.environ_base['HTTP_AUTHORIZATION'] = (
+            'Bearer ' + create_access_token(identity='dish-admin')
+        )
 
     def tearDown(self):
         self.session_patch.stop()
+        db.session.remove()
+        db.engine.dispose()
+        self.context.pop()
         self.engine.dispose()
 
     def create(self, **overrides):

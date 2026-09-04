@@ -3,6 +3,7 @@ from model.wedding_music import WeddingMusic
 from model.wedding_photo_wall import WeddingPhotoWall
 from datetime import datetime
 from extensions import db
+from utils.authorization import admin_required
 from config import endpoint, bucket_name
 import os
 import oss2
@@ -12,6 +13,7 @@ wedding_api_pb = Blueprint('wedding_api', __name__)
 
 
 @wedding_api_pb.route('/wedding/music/add', methods=['Post'])
+@admin_required
 def add_wedding_music():
     data = request.get_json()
     if not data:
@@ -87,6 +89,7 @@ def get_wedding_photo_wall_list_all():
 
 
 @wedding_api_pb.route('/wedding/photo/wall/delete', methods=['POST'])
+@admin_required
 def delete_wedding_photo():
     data = request.get_json()
     if not data:
@@ -115,6 +118,7 @@ def delete_wedding_photo():
 
 
 @wedding_api_pb.route('/wedding/photo/wall/add', methods=['POST'])
+@admin_required
 def add_wedding_photo_wall():
     data = request.get_json()
     if not data:
@@ -155,6 +159,7 @@ def add_wedding_photo_wall():
 
 
 @wedding_api_pb.route('/wedding/photo/wall/edit', methods=['POST'])
+@admin_required
 def edit_wedding_photo_wall():
     data = request.get_json()
     id = data.get('id')

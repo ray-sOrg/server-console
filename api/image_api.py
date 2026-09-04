@@ -1,5 +1,5 @@
 from flask import current_app, Blueprint, jsonify
-from flask_jwt_extended import jwt_required
+from utils.authorization import admin_required
 from utils.oss_utils import OSSClient
 from model.image import Image
 from config import access_key_id, access_key_secret, endpoint, bucket_name
@@ -94,14 +94,14 @@ def add_files_to_database(files):
 
 
 @image_api_pb.route('/image/asyncOss')
-@jwt_required()
+@admin_required
 def readImageOss():
     task = current_app.celery.send_task("fetch_images_from_oss")
     return jsonify({"code": 200, "message": "Task started", "data": {}, "task_id": task.id}), 200
 
 
 @image_api_pb.route('/image/task_status/<task_id>', methods=['GET'])
-@jwt_required()
+@admin_required
 def get_task_status(task_id):
     try:
         task = current_app.celery.AsyncResult(task_id)
