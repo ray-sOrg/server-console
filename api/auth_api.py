@@ -11,7 +11,6 @@ from flask_jwt_extended import (
     get_jwt_identity,
     set_access_cookies,
     set_refresh_cookies,
-    get_csrf_token,
     unset_jwt_cookies,
     verify_jwt_in_request,
     jwt_required,
@@ -222,14 +221,6 @@ def oidc_callback():
             response, access_token, refresh_token,
             access_lifetime, refresh_lifetime,
         )
-        # The SPA calls api.tt829.cn directly. Keep host-only copies as well
-        # as the shared-domain cookies so browsers that reject cross-subdomain
-        # cookie propagation still send the session to the API origin.
-        cookie_secure = current_app.config.get('JWT_COOKIE_SECURE', False)
-        response.set_cookie('access_token_cookie', access_token, secure=cookie_secure, httponly=True, samesite='Lax', path='/')
-        response.set_cookie('csrf_access_token', get_csrf_token(access_token), secure=cookie_secure, samesite='Lax', path='/')
-        response.set_cookie('csrf_refresh_token', get_csrf_token(refresh_token), secure=cookie_secure, samesite='Lax', path='/')
-        response.set_cookie('refresh_token_cookie', refresh_token, secure=cookie_secure, httponly=True, samesite='Lax', path='/api/auth')
         return response
     except Exception:
         current_app.logger.exception('OIDC callback failed')
