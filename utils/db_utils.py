@@ -8,6 +8,10 @@ from extensions import db
 
 
 REQUIRED_COLUMNS = {
+    'auth_session': {
+        'oidc_sid': 'VARCHAR(255)',
+        'oidc_subject': 'VARCHAR(255)',
+    },
     'app_user': {
         'display_name': 'VARCHAR(100)',
         'height_cm': 'INTEGER',

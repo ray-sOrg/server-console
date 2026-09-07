@@ -32,6 +32,7 @@ from utils.auth_session_utils import (
     ensure_utc,
 )
 from utils.oidc import APP_TARGETS, authorization_url, digest, random_urlsafe
+from utils.oidc_logout import validate_logout_token
 
 
 auth_api_pb = Blueprint('auth_api', __name__)
@@ -214,6 +215,8 @@ def oidc_callback():
         )
         if claims.get('nonce') != nonce:
             raise ValueError('OIDC nonce mismatch')
+        if not isinstance(claims.get('sid'), str) or not claims['sid']:
+            raise ValueError('Missing OIDC session')
         required_role, target_url = APP_TARGETS[target_app]
         roles = claims.get('realm_access', {}).get('roles', [])
         if required_role not in roles:
@@ -225,6 +228,8 @@ def oidc_callback():
         now = utc_now()
         auth_session = AuthSession(
             user_identity=user.username,
+            oidc_sid=claims.get('sid'),
+            oidc_subject=claims['sub'],
             expires_at=now + REFRESH_TOKEN_LIFETIME,
             last_used_at=now,
         )
@@ -306,8 +311,33 @@ def login():
     return response
 
 
+@auth_api_pb.route('/auth/oidc/backchannel-logout', methods=['POST'])
+def oidc_backchannel_logout():
+    token = request.form.get('logout_token', '')
+    if not token or len(token) > 16384:
+        return jsonify({'message': 'Invalid logout token'}), 400
+    try:
+        issuer = oidc_setting('OIDC_ISSUER').rstrip('/')
+        key = pyjwt.PyJWKClient(issuer + '/protocol/openid-connect/certs', timeout=15).get_signing_key_from_jwt(token)
+        claims = validate_logout_token(token, key.key, issuer, oidc_setting('OIDC_CLIENT_ID'))
+        sessions = AuthSession.query.filter_by(oidc_sid=claims['sid'])
+        if claims.get('sub'):
+            sessions = sessions.filter_by(oidc_subject=claims['sub'])
+        sessions.filter(AuthSession.revoked_at.is_(None)).update({'revoked_at': utc_now()})
+        db.session.commit()
+        return '', 200, {'Cache-Control': 'no-store'}
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.warning('OIDC logout rejected: %s', type(exc).__name__)
+        return jsonify({'message': 'Invalid logout token'}), 400
+
+
 @auth_api_pb.route('/auth/logout', methods=['POST'])
 def logout():
+    unified = request.args.get('unified') == '1'
+    target_app = request.args.get('app', 'console')
+    if unified and target_app not in APP_TARGETS:
+        return jsonify({'message': 'Unknown application'}), 400
     try:
         verify_jwt_in_request(refresh=True)
         jwt_payload = get_jwt()
@@ -320,8 +350,17 @@ def logout():
             db.session.commit()
     except Exception:
         db.session.rollback()
+        if unified:
+            return jsonify({'message': 'Logout requires a valid session and CSRF token'}), 401
 
-    response = jsonify({'code': 200, 'message': 'logout successful', 'data': {}})
+    data = {}
+    if unified:
+        target_url = APP_TARGETS[target_app][1] + ('/login' if target_app == 'console' else '/')
+        data['logoutUrl'] = oidc_setting('OIDC_ISSUER').rstrip('/') + '/protocol/openid-connect/logout?' + urlencode({
+            'client_id': oidc_setting('OIDC_CLIENT_ID'),
+            'post_logout_redirect_uri': target_url,
+        })
+    response = jsonify({'code': 200, 'message': 'logout successful', 'data': data})
     unset_jwt_cookies(response)
     clear_legacy_root_cookies(response)
     return response

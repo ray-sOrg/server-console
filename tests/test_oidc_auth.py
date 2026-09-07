@@ -81,6 +81,7 @@ class OidcAuthTests(unittest.TestCase):
         now = utc_now()
         result = {
             'sub': 'identity-tangtao',
+            'sid': 'browser-a',
             'iss': self.app.config['OIDC_ISSUER'],
             'aud': 'server-console',
             'iat': int(now.timestamp()),
@@ -270,6 +271,46 @@ class OidcAuthTests(unittest.TestCase):
         self.assertIsNone(self.client.get_cookie('access_token_cookie', domain='api.tt829.cn'))
         self.assertIsNone(self.client.get_cookie('refresh_token_cookie', domain='api.tt829.cn', path='/api/auth'))
         self.assertEqual(decode_token(self.cookie_value('access_token_cookie'))['sub'], 'tangtao')
+
+    def test_backchannel_logout_is_verified_and_scoped_to_one_browser(self):
+        state, nonce, _ = self.begin()
+        self.callback(state, self.claims(nonce))
+        state, nonce, _ = self.begin()
+        self.callback(state, self.claims(nonce, sid='browser-b'))
+        claims = self.claims(nonce)
+        del claims['nonce']
+        claims.update(jti='logout-1', events={'http://schemas.openid.net/event/backchannel-logout': {}})
+        with patch.object(auth_api.pyjwt, 'PyJWKClient') as jwks:
+            jwks.return_value.get_signing_key_from_jwt.return_value = SimpleNamespace(key=self.private_key.public_key())
+            for changes, key in (({'nonce': nonce}, self.private_key), ({'aud': 'other'}, self.private_key),
+                                 ({'events': {}}, self.private_key), ({'sid': ''}, self.private_key),
+                                 ({'exp': 1}, self.private_key), ({}, self.other_key)):
+                token = pyjwt.encode({**claims, **changes}, key, algorithm='RS256')
+                response = self.client.post('/api/auth/oidc/backchannel-logout', base_url=API_ORIGIN,
+                                            data={'logout_token': token})
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(AuthSession.query.filter(AuthSession.revoked_at.is_(None)).count(), 2)
+            token = pyjwt.encode(claims, self.private_key, algorithm='RS256')
+            for _ in range(2):
+                response = self.client.post('/api/auth/oidc/backchannel-logout', base_url=API_ORIGIN,
+                                            data={'logout_token': token})
+                self.assertEqual(response.status_code, 200)
+                self.assertIsNotNone(AuthSession.query.filter_by(oidc_sid='browser-a').one().revoked_at)
+                self.assertIsNone(AuthSession.query.filter_by(oidc_sid='browser-b').one().revoked_at)
+
+    def test_unified_logout_requires_csrf_and_returns_provider_url(self):
+        state, nonce, _ = self.begin()
+        self.callback(state, self.claims(nonce))
+        path = '/api/auth/logout?unified=1&app=console'
+        self.assertEqual(self.client.post(path, base_url=API_ORIGIN).status_code, 401)
+        self.assertIsNone(AuthSession.query.one().revoked_at)
+        response = self.client.post(path, base_url=API_ORIGIN,
+                                    headers={'X-CSRF-TOKEN': self.cookie_value('csrf_refresh_token')})
+        self.assertEqual(response.status_code, 200)
+        location = urlsplit(response.json['data']['logoutUrl'])
+        self.assertEqual(location.netloc, 'auth.example')
+        self.assertEqual(parse_qs(location.query)['post_logout_redirect_uri'], [CONSOLE_ORIGIN + '/login'])
+        self.assertIsNotNone(AuthSession.query.one().revoked_at)
 
 
 if __name__ == '__main__':
