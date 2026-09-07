@@ -216,13 +216,14 @@ class AuthorizationTests(unittest.TestCase):
         self.assertEqual(
             self.client.get('/api/auth/oidc/login?app=unknown').status_code, 400,
         )
-        response = self.client.get('/api/auth/oidc/login?app=weight')
+        response = self.client.get('/api/auth/oidc/login?app=weight', base_url='https://api.example')
         self.assertEqual(response.status_code, 302)
         self.assertTrue(response.location.startswith(
             'https://auth.example/realms/test/protocol/openid-connect/auth?',
         ))
         self.assertIn('code_challenge_method=S256', response.location)
-        self.assertIn('console_oidc_state_v2=', response.headers['Set-Cookie'])
+        self.assertTrue(any('console_oidc_state_v3=' in value and 'Max-Age=600' in value
+                            for value in response.headers.getlist('Set-Cookie')))
         attempt = OidcLoginAttempt.query.one()
         self.assertEqual(attempt.target_app, 'weight')
         self.assertNotIn(attempt.code_verifier, response.location)

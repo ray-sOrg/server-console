@@ -37,9 +37,9 @@ SQLALCHEMY_ENGINE_OPTIONS = {
 # JWT 配置
 JWT_TOKEN_LOCATION = ["cookies"]
 JWT_COOKIE_SECURE = IS_PRODUCTION
-# The SPAs call api.tt829.cn directly. Host-only cookies avoid duplicate
-# same-name cookies and browser inconsistencies across console/weight hosts.
-JWT_COOKIE_DOMAIN = os.getenv('JWT_COOKIE_DOMAIN') or None
+# Console and Weight read the non-HttpOnly CSRF companion cookies from their
+# own origins before making credentialed requests to api.tt829.cn.
+JWT_COOKIE_DOMAIN = os.getenv('JWT_COOKIE_DOMAIN') or ('.tt829.cn' if IS_PRODUCTION else None)
 JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'change-this-to-a-strong-secret-key')
 JWT_ACCESS_TOKEN_EXPIRES = timedelta(days=7)
 JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=180)

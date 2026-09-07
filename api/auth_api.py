@@ -1,7 +1,9 @@
 import bcrypt
 import jwt as pyjwt
 import requests
+import secrets
 from datetime import timedelta
+from urllib.parse import urlencode, urlsplit
 from flask import Blueprint, current_app, jsonify, make_response, redirect, request
 from flask_jwt_extended import (
     create_access_token,
@@ -40,8 +42,8 @@ AUTH_COOKIE_NAMES = (
     'refresh_token_cookie',
     'csrf_refresh_token',
 )
-OIDC_STATE_COOKIE = 'console_oidc_state_v2'
-LEGACY_OIDC_STATE_COOKIE = 'console_oidc_state'
+OIDC_STATE_COOKIE = 'console_oidc_state_v3'
+LEGACY_OIDC_STATE_COOKIES = ('console_oidc_state', 'console_oidc_state_v2')
 OIDC_ATTEMPT_LIFETIME = timedelta(minutes=10)
 
 
@@ -53,22 +55,43 @@ def oidc_setting(name):
 
 
 def clear_legacy_root_cookies(response):
-    """Remove host-only and old root-path cookies from earlier releases."""
+    """Remove old host-only/domain variants before writing canonical cookies."""
     configured_domain = current_app.config.get('JWT_COOKIE_DOMAIN')
     cookie_secure = current_app.config.get('JWT_COOKIE_SECURE', False)
     cookie_domains = (None, configured_domain) if configured_domain else (None,)
     for cookie_domain in cookie_domains:
         for cookie_name in AUTH_COOKIE_NAMES:
-            response.set_cookie(
-                cookie_name,
-                value='',
-                expires=0,
-                path='/',
-                domain=cookie_domain,
-                secure=cookie_secure,
-                httponly=cookie_name.endswith('_token_cookie'),
-                samesite='Lax',
-            )
+            for cookie_path in ('/', '/api/auth'):
+                response.set_cookie(
+                    cookie_name,
+                    value='',
+                    expires=0,
+                    path=cookie_path,
+                    domain=cookie_domain,
+                    secure=cookie_secure,
+                    httponly=cookie_name.endswith('_token_cookie'),
+                    samesite='Lax',
+                )
+
+
+def clear_oidc_state_cookies(response):
+    response.delete_cookie(OIDC_STATE_COOKIE, path='/api/auth/oidc/callback')
+    configured_domain = current_app.config.get('JWT_COOKIE_DOMAIN')
+    domains = (None, configured_domain) if configured_domain else (None,)
+    for domain in domains:
+        for name in LEGACY_OIDC_STATE_COOKIES:
+            for path in ('/', '/api/auth/oidc/callback'):
+                response.delete_cookie(name, path=path, domain=domain)
+
+
+def oidc_failure(target_app, reason):
+    # The app and reason are server-selected; never redirect to a request URL.
+    target_url = APP_TARGETS[target_app][1]
+    path = '/login' if target_app == 'console' else '/'
+    current_app.logger.warning('OIDC login rejected: app=%s reason=%s', target_app, reason)
+    response = redirect(target_url + path + '?' + urlencode({'auth_error': reason}))
+    clear_oidc_state_cookies(response)
+    return response
 
 
 def issue_session_tokens(auth_session, now=None):
@@ -115,6 +138,12 @@ def oidc_login():
     target_app = request.args.get('app', 'console')
     if target_app not in APP_TARGETS:
         return jsonify({'code': 400, 'message': 'Unknown application', 'data': {}}), 400
+    # Older SPA builds used a same-origin reverse proxy. Establish browser
+    # binding on the actual callback host before allocating a login attempt.
+    callback = urlsplit(oidc_setting('OIDC_CALLBACK_URL'))
+    canonical_origin = callback.scheme + '://' + callback.netloc
+    if request.host.lower() != callback.netloc.lower():
+        return redirect(canonical_origin + '/api/auth/oidc/login?' + urlencode({'app': target_app}))
     state = random_urlsafe()
     nonce = random_urlsafe()
     verifier = random_urlsafe(64)
@@ -130,17 +159,13 @@ def oidc_login():
         oidc_setting('OIDC_CALLBACK_URL'), state, nonce, verifier,
     )
     response = redirect(location)
+    clear_oidc_state_cookies(response)
     response.set_cookie(
         OIDC_STATE_COOKIE, state, httponly=True,
         secure=current_app.config.get('JWT_COOKIE_SECURE', False),
         samesite='Lax', path='/api/auth/oidc/callback',
-        domain=current_app.config.get('JWT_COOKIE_DOMAIN'),
         max_age=int(OIDC_ATTEMPT_LIFETIME.total_seconds()),
     )
-    # Remove the pre-v2 cookie so stale values cannot win when duplicate
-    # cookies with different paths are sent by the browser.
-    response.set_cookie(LEGACY_OIDC_STATE_COOKIE, '', expires=0, path='/', domain=current_app.config.get('JWT_COOKIE_DOMAIN'))
-    response.set_cookie(LEGACY_OIDC_STATE_COOKIE, '', expires=0, path='/api/auth/oidc/callback', domain=current_app.config.get('JWT_COOKIE_DOMAIN'))
     return response
 
 
@@ -148,17 +173,21 @@ def oidc_login():
 def oidc_callback():
     state = request.args.get('state', '')
     cookie_state = request.cookies.get(OIDC_STATE_COOKIE)
-    if not state:
+    if not state or not cookie_state or not secrets.compare_digest(state, cookie_state):
         return jsonify({'code': 400, 'message': 'Invalid login state', 'data': {}}), 400
     attempt = db.session.get(OidcLoginAttempt, digest(state))
     if not attempt or ensure_utc(attempt.expires_at) <= utc_now():
         return jsonify({'code': 400, 'message': 'Login request expired', 'data': {}}), 400
-    # Some browsers/proxies drop the short-lived callback cookie when the
-    # identity provider redirects across subdomains. The state is already a
-    # high-entropy, one-time value persisted in the database, so accepting a
-    # missing cookie here preserves CSRF protection without blocking login.
-    if cookie_state and state != cookie_state:
-        return jsonify({'code': 400, 'message': 'Invalid login state', 'data': {}}), 400
+    target_app = attempt.target_app
+    nonce = attempt.nonce
+    verifier = attempt.code_verifier
+    # Claim once before exchanging the code, including across worker processes.
+    claimed = OidcLoginAttempt.query.filter_by(state_hash=digest(state)).delete()
+    db.session.commit()
+    if claimed != 1:
+        return jsonify({'code': 400, 'message': 'Login request expired', 'data': {}}), 400
+    if request.args.get('error') or not request.args.get('code'):
+        return oidc_failure(target_app, 'failed')
 
     try:
         issuer = oidc_setting('OIDC_ISSUER').rstrip('/')
@@ -170,7 +199,7 @@ def oidc_callback():
                 'redirect_uri': oidc_setting('OIDC_CALLBACK_URL'),
                 'client_id': oidc_setting('OIDC_CLIENT_ID'),
                 'client_secret': oidc_setting('OIDC_CLIENT_SECRET'),
-                'code_verifier': attempt.code_verifier,
+                'code_verifier': verifier,
             },
         )
         token_response.raise_for_status()
@@ -181,20 +210,17 @@ def oidc_callback():
         claims = pyjwt.decode(
             id_token, signing_key.key, algorithms=['RS256'],
             audience=oidc_setting('OIDC_CLIENT_ID'), issuer=issuer,
+            options={'require': ['sub', 'exp', 'iat', 'iss', 'aud', 'nonce']},
         )
-        if claims.get('nonce') != attempt.nonce:
+        if claims.get('nonce') != nonce:
             raise ValueError('OIDC nonce mismatch')
-        required_role, target_url = APP_TARGETS[attempt.target_app]
+        required_role, target_url = APP_TARGETS[target_app]
         roles = claims.get('realm_access', {}).get('roles', [])
         if required_role not in roles:
-            db.session.delete(attempt)
-            db.session.commit()
-            return redirect(target_url + '/?auth_error=forbidden')
+            return oidc_failure(target_app, 'forbidden')
         user = User.query.filter_by(oidc_subject=claims['sub']).first()
         if user is None:
-            db.session.delete(attempt)
-            db.session.commit()
-            return redirect(target_url + '/?auth_error=unmapped')
+            return oidc_failure(target_app, 'unmapped')
 
         now = utc_now()
         auth_session = AuthSession(
@@ -203,31 +229,25 @@ def oidc_callback():
             last_used_at=now,
         )
         db.session.add(auth_session)
-        db.session.delete(attempt)
         db.session.flush()
         access_token, refresh_token, access_lifetime, refresh_lifetime = issue_session_tokens(
             auth_session, now,
         )
         db.session.commit()
         response = redirect(target_url)
-        response.set_cookie(
-            OIDC_STATE_COOKIE, '', expires=0,
-            path='/api/auth/oidc/callback', httponly=True,
-            domain=current_app.config.get('JWT_COOKIE_DOMAIN'),
-        )
-        response.set_cookie(LEGACY_OIDC_STATE_COOKIE, '', expires=0, path='/', domain=current_app.config.get('JWT_COOKIE_DOMAIN'))
-        response.set_cookie(LEGACY_OIDC_STATE_COOKIE, '', expires=0, path='/api/auth/oidc/callback', domain=current_app.config.get('JWT_COOKIE_DOMAIN'))
+        clear_oidc_state_cookies(response)
+        clear_legacy_root_cookies(response)
         set_session_cookies(
             response, access_token, refresh_token,
             access_lifetime, refresh_lifetime,
         )
         return response
-    except Exception:
-        current_app.logger.exception('OIDC callback failed')
+    except Exception as exc:
+        # Avoid logging authorization codes, token payloads, or provider URLs
+        # from exception messages; record only the exception class.
+        current_app.logger.warning('OIDC callback failed: error_type=%s', type(exc).__name__)
         db.session.rollback()
-        OidcLoginAttempt.query.filter_by(state_hash=digest(state)).delete()
-        db.session.commit()
-        return jsonify({'code': 400, 'message': 'Unified login failed', 'data': {}}), 400
+        return oidc_failure(target_app, 'failed')
 
 
 @auth_api_pb.route('/auth/login', methods=['POST'])
