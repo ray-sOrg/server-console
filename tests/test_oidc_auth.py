@@ -77,6 +77,28 @@ class OidcAuthTests(unittest.TestCase):
         query = parse_qs(urlsplit(response.location).query)
         return query['state'][0], query['nonce'][0], response
 
+    def test_silent_sso_uses_isolated_state_and_never_redirects_parent(self):
+        manual_state, _, _ = self.begin()
+        response = self.client.get('/api/auth/oidc/login?app=console&silent=1', base_url=API_ORIGIN)
+        query = parse_qs(urlsplit(response.location).query)
+        self.assertEqual(query['prompt'], ['none'])
+        self.assertTrue(query['state'][0].startswith('silent.console.'))
+        self.assertEqual(self.client.get_cookie(auth_api.OIDC_STATE_COOKIE, domain='api.tt829.cn', path=CALLBACK_PATH).value, manual_state)
+        result = self.client.get(CALLBACK_PATH, query_string={'state': query['state'][0], 'error': 'login_required'}, base_url=API_ORIGIN)
+        self.assertEqual(result.status_code, 200)
+        self.assertNotIn('Location', result.headers)
+        self.assertIn('"authenticated": false', result.text)
+        self.assertIn(CONSOLE_ORIGIN, result.text)
+
+    def test_silent_sso_success_sets_business_cookie(self):
+        response = self.client.get('/api/auth/oidc/login?app=weight&silent=1', base_url=API_ORIGIN)
+        query = parse_qs(urlsplit(response.location).query)
+        result, _ = self.callback(query['state'][0], self.claims(query['nonce'][0]))
+        self.assertEqual(result.status_code, 200)
+        self.assertIn('"authenticated": true', result.text)
+        self.assertIn(WEIGHT_ORIGIN, result.text)
+        self.assertTrue(any('access_token_cookie=' in c for c in result.headers.getlist('Set-Cookie')))
+
     def claims(self, expected_nonce, **changes):
         now = utc_now()
         result = {

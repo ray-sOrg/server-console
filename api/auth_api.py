@@ -2,6 +2,7 @@ import bcrypt
 import jwt as pyjwt
 import requests
 import secrets
+import json
 from datetime import timedelta
 from urllib.parse import urlencode, urlsplit
 from flask import Blueprint, current_app, jsonify, make_response, redirect, request
@@ -90,8 +91,22 @@ def oidc_failure(target_app, reason):
     target_url = APP_TARGETS[target_app][1]
     path = '/login' if target_app == 'console' else '/'
     current_app.logger.warning('OIDC login rejected: app=%s reason=%s', target_app, reason)
-    response = redirect(target_url + path + '?' + urlencode({'auth_error': reason}))
-    clear_oidc_state_cookies(response)
+    response = silent_sso_result(target_app, False) if request.args.get('state', '').startswith('silent.') else redirect(target_url + path + '?' + urlencode({'auth_error': reason}))
+    if not request.args.get('state', '').startswith('silent.'):
+        clear_oidc_state_cookies(response)
+    return response
+
+
+def silent_sso_result(target_app, authenticated):
+    origin = APP_TARGETS[target_app][1].rstrip('/')
+    nonce = secrets.token_urlsafe(18)
+    payload = json.dumps({'type': 'tt829:sso', 'authenticated': authenticated})
+    response = make_response(f'<!doctype html><script nonce="{nonce}">parent.postMessage({payload},{json.dumps(origin)});</script>')
+    response.headers['Content-Type'] = 'text/html; charset=utf-8'
+    response.headers['Cache-Control'] = 'no-store'
+    response.headers['Referrer-Policy'] = 'no-referrer'
+    response.headers['Content-Security-Policy'] = f"default-src 'none'; script-src 'nonce-{nonce}'; frame-ancestors {origin}"
+    response.delete_cookie(OIDC_STATE_COOKIE + '_silent_' + target_app, path='/api/auth/oidc/callback')
     return response
 
 
@@ -145,7 +160,8 @@ def oidc_login():
     canonical_origin = callback.scheme + '://' + callback.netloc
     if request.host.lower() != callback.netloc.lower():
         return redirect(canonical_origin + '/api/auth/oidc/login?' + urlencode({'app': target_app}))
-    state = random_urlsafe()
+    silent = request.args.get('silent') == '1'
+    state = ('silent.' + target_app + '.' if silent else '') + random_urlsafe()
     nonce = random_urlsafe()
     verifier = random_urlsafe(64)
     now = utc_now()
@@ -160,9 +176,12 @@ def oidc_login():
         oidc_setting('OIDC_CALLBACK_URL'), state, nonce, verifier,
     )
     response = redirect(location)
-    clear_oidc_state_cookies(response)
+    if silent:
+        response.headers['Location'] = location + '&prompt=none'
+    else:
+        clear_oidc_state_cookies(response)
     response.set_cookie(
-        OIDC_STATE_COOKIE, state, httponly=True,
+        OIDC_STATE_COOKIE + ('_silent_' + target_app if silent else ''), state, httponly=True,
         secure=current_app.config.get('JWT_COOKIE_SECURE', False),
         samesite='Lax', path='/api/auth/oidc/callback',
         max_age=int(OIDC_ATTEMPT_LIFETIME.total_seconds()),
@@ -173,7 +192,8 @@ def oidc_login():
 @auth_api_pb.route('/auth/oidc/callback', methods=['GET'])
 def oidc_callback():
     state = request.args.get('state', '')
-    cookie_state = request.cookies.get(OIDC_STATE_COOKIE)
+    silent_app = state.split('.')[1] if state.startswith('silent.') and len(state.split('.')) == 3 else None
+    cookie_state = request.cookies.get(OIDC_STATE_COOKIE + ('_silent_' + silent_app if silent_app in APP_TARGETS else ''))
     if not state or not cookie_state or not secrets.compare_digest(state, cookie_state):
         return jsonify({'code': 400, 'message': 'Invalid login state', 'data': {}}), 400
     attempt = db.session.get(OidcLoginAttempt, digest(state))
@@ -239,8 +259,9 @@ def oidc_callback():
             auth_session, now,
         )
         db.session.commit()
-        response = redirect(target_url)
-        clear_oidc_state_cookies(response)
+        response = silent_sso_result(target_app, True) if silent_app else redirect(target_url)
+        if not silent_app:
+            clear_oidc_state_cookies(response)
         clear_legacy_root_cookies(response)
         set_session_cookies(
             response, access_token, refresh_token,
