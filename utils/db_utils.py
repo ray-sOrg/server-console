@@ -77,6 +77,11 @@ def add_missing_columns():
                     table_name,
                     column_name,
                 )
+        if 'auth_session' in existing_tables:
+            connection.execute(text(
+                'CREATE INDEX IF NOT EXISTS ix_auth_session_oidc_sid '
+                'ON auth_session (oidc_sid)'
+            ))
 
 
 def create_missing_tables(app):
