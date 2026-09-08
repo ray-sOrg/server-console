@@ -34,6 +34,7 @@ from utils.auth_session_utils import (
 )
 from utils.oidc import APP_TARGETS, authorization_url, digest, random_urlsafe
 from utils.oidc_logout import validate_logout_token
+from utils.central_session import encrypt_refresh_token
 
 
 auth_api_pb = Blueprint('auth_api', __name__)
@@ -250,7 +251,9 @@ def oidc_callback():
             user_identity=user.username,
             oidc_sid=claims.get('sid'),
             oidc_subject=claims['sub'],
-            expires_at=now + REFRESH_TOKEN_LIFETIME,
+            oidc_refresh_token=encrypt_refresh_token(token_response.json()['refresh_token']) if token_response.json().get('refresh_token') else None,
+            oidc_checked_at=now,
+            expires_at=now + timedelta(days=30),
             last_used_at=now,
         )
         db.session.add(auth_session)
@@ -278,6 +281,8 @@ def oidc_callback():
 
 @auth_api_pb.route('/auth/login', methods=['POST'])
 def login():
+    if current_app.config.get('OIDC_SESSION_ENFORCED', False):
+        return jsonify({'code': 403, 'data': {}, 'message': '请使用统一账号登录'}), 403
     data = request.get_json() or {}
     username = (data.get('username') or '').strip()
     password = data.get('password') or ''

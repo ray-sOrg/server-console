@@ -99,6 +99,43 @@ class OidcAuthTests(unittest.TestCase):
         self.assertIn(WEIGHT_ORIGIN, result.text)
         self.assertTrue(any('access_token_cookie=' in c for c in result.headers.getlist('Set-Cookie')))
 
+    def test_central_enforcement_rejects_legacy_cookie_session(self):
+        state, nonce, _ = self.begin()
+        self.callback(state, self.claims(nonce))
+        self.app.config['OIDC_SESSION_ENFORCED'] = True
+        result = self.client.get('/api/user/login/info', base_url=API_ORIGIN)
+        self.assertEqual(result.json['code'], 5005)
+
+    def test_central_outage_is_503_not_logout(self):
+        from utils.central_session import encrypt_refresh_token
+        state, nonce, _ = self.begin()
+        self.callback(state, self.claims(nonce))
+        session = AuthSession.query.first()
+        session.oidc_refresh_token = encrypt_refresh_token('test-rt')
+        session.oidc_checked_at = utc_now() - timedelta(minutes=5)
+        db.session.commit()
+        self.app.config['OIDC_SESSION_ENFORCED'] = True
+        with patch('utils.central_session.requests.post', side_effect=TimeoutError):
+            result = self.client.get('/api/user/login/info', base_url=API_ORIGIN)
+        self.assertEqual(result.status_code, 503)
+        self.assertIsNone(AuthSession.query.first().revoked_at)
+
+    def test_expired_central_session_revokes_business_session(self):
+        from utils.central_session import encrypt_refresh_token
+        state, nonce, _ = self.begin()
+        self.callback(state, self.claims(nonce))
+        session = AuthSession.query.first()
+        session.oidc_refresh_token = encrypt_refresh_token('test-rt')
+        session.oidc_checked_at = utc_now() - timedelta(minutes=5)
+        db.session.commit()
+        self.app.config['OIDC_SESSION_ENFORCED'] = True
+        response = Mock(status_code=400)
+        response.json.return_value = {'error': 'invalid_grant'}
+        with patch('utils.central_session.requests.post', return_value=response):
+            result = self.client.get('/api/user/login/info', base_url=API_ORIGIN)
+        self.assertEqual(result.json['code'], 5005)
+        self.assertIsNotNone(AuthSession.query.first().revoked_at)
+
     def claims(self, expected_nonce, **changes):
         now = utc_now()
         result = {

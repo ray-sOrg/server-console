@@ -52,6 +52,7 @@ JWT_REFRESH_CSRF_COOKIE_PATH = '/'
 
 # Unified OIDC identity provider. The client secret is always injected at runtime.
 OIDC_ISSUER = os.getenv('OIDC_ISSUER', '')
+OIDC_SESSION_ENFORCED = os.getenv('OIDC_SESSION_ENFORCED', 'false').lower() == 'true'
 OIDC_CLIENT_ID = os.getenv('OIDC_CLIENT_ID', '')
 OIDC_CLIENT_SECRET = os.getenv('OIDC_CLIENT_SECRET', '')
 OIDC_CALLBACK_URL = os.getenv(

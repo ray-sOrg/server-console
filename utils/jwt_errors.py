@@ -1,6 +1,7 @@
 import logging
 
-from flask import jsonify
+from flask import jsonify, abort
+from utils.central_session import central_session_active, CentralSessionUnavailable
 from extensions import jwt
 from model.auth_session import AuthSession
 from utils.auth_session_utils import (
@@ -24,6 +25,8 @@ def register_jwt_errors():
             now = utc_now()
             if not session_is_active(auth_session, now):
                 return True
+            if not central_session_active(auth_session):
+                return True
             if jwt_payload.get('type') == 'refresh':
                 return not refresh_jti_is_valid(
                     auth_session,
@@ -31,6 +34,8 @@ def register_jwt_errors():
                     now,
                 )
             return False
+        except CentralSessionUnavailable:
+            abort(503, description='Central authentication temporarily unavailable')
         except Exception:
             logging.exception('Failed to validate authentication session')
             return True

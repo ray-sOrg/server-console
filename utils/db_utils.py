@@ -11,6 +11,8 @@ REQUIRED_COLUMNS = {
     'auth_session': {
         'oidc_sid': 'VARCHAR(255)',
         'oidc_subject': 'VARCHAR(255)',
+        'oidc_refresh_token': 'TEXT',
+        'oidc_checked_at': 'TIMESTAMP WITH TIME ZONE',
     },
     'app_user': {
         'display_name': 'VARCHAR(100)',

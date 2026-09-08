@@ -34,6 +34,8 @@ class AuthSession(db.Model):
     current_refresh_jti = db.Column(db.String(64), nullable=True, unique=True)
     oidc_sid = db.Column(db.String(255), nullable=True, index=True)
     oidc_subject = db.Column(db.String(255), nullable=True)
+    oidc_refresh_token = db.Column(db.Text(), nullable=True)
+    oidc_checked_at = db.Column(db.DateTime(timezone=True), nullable=True)
     previous_refresh_jti = db.Column(db.String(64), nullable=True)
     refresh_rotated_at = db.Column(db.DateTime(timezone=True), nullable=True)
     expires_at = db.Column(db.DateTime(timezone=True), nullable=False, index=True)
