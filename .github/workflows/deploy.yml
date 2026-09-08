@@ -116,12 +116,17 @@ jobs:
           DEPLOY_HTTP_TOKEN: ${{ secrets.DEPLOY_HTTP_TOKEN }}
         run: |
           DEPLOY_ID="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          for attempt in $(seq 1 270); do
-            RESPONSE="$(curl --fail-with-body --silent --show-error \
+          DEADLINE=$((SECONDS + 2400))
+          while (( SECONDS < DEADLINE )); do
+            if ! RESPONSE="$(curl --fail-with-body --silent --show-error \
               --retry 2 --retry-all-errors \
               --connect-timeout 10 --max-time 30 \
               --header "Authorization: Bearer $DEPLOY_HTTP_TOKEN" \
-              "$DEPLOY_API_URL/jobs/$PROJECT_NAME/$DEPLOY_ID")"
+              "$DEPLOY_API_URL/jobs/$PROJECT_NAME/$DEPLOY_ID")"; then
+              echo "::warning::Deployment status query failed; server outcome is unknown. Retrying."
+              sleep 10
+              continue
+            fi
             STATUS="$(jq -r '.status' <<<"$RESPONSE")"
             MESSAGE="$(jq -r '.message // ""' <<<"$RESPONSE")"
             echo "Server deployment: $STATUS - $MESSAGE"
@@ -142,7 +147,7 @@ jobs:
                 ;;
             esac
           done
-          echo "Timed out waiting for the server deployment" >&2
+          echo "Timed out querying deployment; server outcome is UNKNOWN, not confirmed failed" >&2
           exit 1
 
       - name: Deployment summary
