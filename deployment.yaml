@@ -36,11 +36,7 @@ spec:
             - containerPort: 5000
           env:
             - name: OIDC_SESSION_ENFORCED
-              valueFrom:
-                configMapKeyRef:
-                  name: central-session-policy
-                  key: enforced
-                  optional: true
+              value: "true"
             # Supabase 数据库配置 - 综合后台（南亚）
             - name: DATABASE_URL
               valueFrom:
