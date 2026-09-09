@@ -321,15 +321,11 @@ class OidcAuthTests(unittest.TestCase):
         repeated_exchange.assert_not_called()
         self.assertEqual(AuthSession.query.count(), 1)
 
-    def test_legacy_password_login_also_replaces_host_only_cookie_variants(self):
-        self.client.set_cookie('access_token_cookie', 'stale', domain='api.tt829.cn')
-        self.client.set_cookie('refresh_token_cookie', 'stale', domain='api.tt829.cn', path='/api/auth')
+    def test_legacy_password_login_is_not_exposed(self):
         response = self.client.post('/api/auth/login', base_url=API_ORIGIN,
                                     json={'username': 'tangtao', 'password': 'test-password'})
-        self.assertEqual(response.json['code'], 200)
-        self.assertIsNone(self.client.get_cookie('access_token_cookie', domain='api.tt829.cn'))
-        self.assertIsNone(self.client.get_cookie('refresh_token_cookie', domain='api.tt829.cn', path='/api/auth'))
-        self.assertEqual(decode_token(self.cookie_value('access_token_cookie'))['sub'], 'tangtao')
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(AuthSession.query.count(), 0)
 
     def test_backchannel_logout_is_verified_and_scoped_to_one_browser(self):
         state, nonce, _ = self.begin()

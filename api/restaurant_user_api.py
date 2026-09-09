@@ -1,23 +1,15 @@
-"""Console-only access to registered Chuan Dai users."""
-from datetime import datetime, timezone
-from hashlib import sha256
-import re
+"""Console-only access to Chuan Dai users bound to unified identities."""
 from uuid import UUID
 
-from argon2 import PasswordHasher
 from flask import Blueprint, current_app, request
-from flask_jwt_extended import get_jwt_identity
-from sqlalchemy import delete, or_
+from sqlalchemy import or_
 
 from api.dish_api import get_restaurant_session, response
-from model.restaurant_user import (
-    RestaurantAuthRateLimit, RestaurantSession, RestaurantUser,
-)
+from model.restaurant_user import RestaurantUser
 from utils.authorization import admin_required
 
 
 restaurant_user_api_pb = Blueprint('restaurant_user_api', __name__)
-password_hasher = PasswordHasher(memory_cost=19456, time_cost=3, parallelism=1)
 
 
 def positive_integer(name, default, maximum):
@@ -89,61 +81,3 @@ def get_user(user_id):
     except Exception:
         current_app.logger.exception('Failed to read restaurant user')
         return response(code=500, message='获取用户详情失败，请稍后重试')
-
-
-@restaurant_user_api_pb.route('/user/<user_id>/reset-password', methods=['POST'])
-@admin_required
-def reset_password(user_id):
-    try:
-        user_id = str(UUID(user_id))
-    except ValueError:
-        return response(code=400, message='无效的用户 ID')
-
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return response(code=400, message='请提供新密码和确认密码')
-    password = data.get('newPassword')
-    if not isinstance(password, str):
-        return response(code=400, message='请输入新密码')
-    try:
-        # Match the H5 Zod string length (UTF-16 code units), without trimming.
-        length = len(password.encode('utf-16-le')) // 2
-        password.encode('utf-8')
-    except UnicodeError:
-        return response(code=400, message='密码包含无效字符')
-    if not 6 <= length <= 64:
-        return response(code=400, message='密码必须为 6–64 位')
-    if not re.search(r'[a-zA-Z]', password) or not re.search(r'[0-9]', password):
-        return response(code=400, message='密码需包含字母和数字')
-    if data.get('confirmPassword') != password:
-        return response(code=400, message='两次输入的密码不一致')
-
-    try:
-        # Perform expensive hashing before taking a database lock.
-        password_hash = password_hasher.hash(password)
-        with get_restaurant_session() as session:
-            with session.begin():
-                user = session.get(RestaurantUser, user_id, with_for_update=True)
-                if user is None:
-                    return response(code=404, message='川傣用户不存在')
-                user.passwordHash = password_hash
-                user.updatedAt = datetime.now(timezone.utc).replace(tzinfo=None)
-                session.execute(delete(RestaurantSession).where(
-                    RestaurantSession.userId == user_id,
-                ))
-                # Same key derivation as H5 login-rate-limit.ts. IP limits stay.
-                account_key = sha256(
-                    f'account:{user.account.lower()}'.encode('utf-8'),
-                ).hexdigest()
-                session.execute(delete(RestaurantAuthRateLimit).where(
-                    RestaurantAuthRateLimit.key == account_key,
-                ))
-        current_app.logger.info(
-            'Restaurant password reset: actor=%s target=%s',
-            get_jwt_identity(), user_id,
-        )
-        return response({'id': user_id}, message='密码已重置，请使用新密码重新登录川傣')
-    except Exception as exc:
-        # SQL exceptions may include hash parameters; log only the error type.
-        current_app.logger.error('Restaurant password reset failed: %s', type(exc).__name__)
-        return response(code=500, message='密码重置失败，请稍后重试')

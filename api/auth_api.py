@@ -1,4 +1,3 @@
-import bcrypt
 import jwt as pyjwt
 import requests
 import secrets
@@ -25,7 +24,6 @@ from model.oidc_login_attempt import OidcLoginAttempt
 from model.user import User
 from utils.auth_session_utils import (
     ACCESS_TOKEN_LIFETIME,
-    REFRESH_TOKEN_LIFETIME,
     max_age_seconds,
     session_is_active,
     session_remaining,
@@ -277,64 +275,6 @@ def oidc_callback():
         current_app.logger.warning('OIDC callback failed: error_type=%s', type(exc).__name__)
         db.session.rollback()
         return oidc_failure(target_app, 'failed')
-
-
-@auth_api_pb.route('/auth/login', methods=['POST'])
-def login():
-    if current_app.config.get('OIDC_SESSION_ENFORCED', False):
-        return jsonify({'code': 403, 'data': {}, 'message': '请使用统一账号登录'}), 403
-    data = request.get_json() or {}
-    username = (data.get('username') or '').strip()
-    password = data.get('password') or ''
-    user = User.query.filter_by(username=username).first()
-
-    if not user:
-        return jsonify({'code': 500, 'data': {}, 'message': '未找到用户'}), 200
-
-    try:
-        password_hash = user.password.encode('utf-8') if isinstance(user.password, str) else user.password
-        if not bcrypt.checkpw(password.encode('utf-8'), password_hash):
-            return jsonify({'code': 500, 'data': {}, 'message': '密码错误'}), 200
-    except Exception:
-        return jsonify({'code': 500, 'data': {}, 'message': '密码验证失败'}), 200
-
-    now = utc_now()
-    auth_session = AuthSession(
-        user_identity=user.username,
-        expires_at=now + REFRESH_TOKEN_LIFETIME,
-        last_used_at=now,
-    )
-    db.session.add(auth_session)
-    db.session.flush()
-    access_token, refresh_token, access_lifetime, refresh_lifetime = issue_session_tokens(
-        auth_session,
-        now,
-    )
-    db.session.commit()
-
-    user_data = {
-        'uuid': user.uid,
-        'username': user.username,
-        'displayName': user.display_name,
-        'role': user.role,
-        'heightCm': user.height_cm,
-        'birthDate': user.birth_date.isoformat() if user.birth_date else None,
-        'create_time': user.create_time,
-    }
-    response = make_response(jsonify({
-        'code': 200,
-        'message': 'Success',
-        'data': user_data,
-    }), 200)
-    clear_legacy_root_cookies(response)
-    set_session_cookies(
-        response,
-        access_token,
-        refresh_token,
-        access_lifetime,
-        refresh_lifetime,
-    )
-    return response
 
 
 @auth_api_pb.route('/auth/oidc/backchannel-logout', methods=['POST'])
