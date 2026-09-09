@@ -1,6 +1,5 @@
 import time
 from datetime import datetime
-import bcrypt
 from flask import Blueprint, g, jsonify, request
 from model.user import User
 from extensions import db
@@ -20,44 +19,6 @@ def serialize_user(user):
         "birthDate": user.birth_date.isoformat() if user.birth_date else None,
         "create_time": user.create_time
     }
-
-
-@user_api_pb.route('/user/add', methods=['POST'])
-@admin_required
-def add_user():
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({'code': 400, 'message': '请提供用户信息', 'data': {}}), 200
-    username = data.get('username')
-    password = data.get('password')
-    role = data.get('role')
-
-    # 检查是否提供了所有必要的数据
-    if not username or not password or not role:
-        return jsonify({"code": 500, "message": "Bad Request", "data": "Missing required fields"}), 200
-
-    # 检查用户名是否唯一
-    if User.query.filter_by(username=username).first():
-        return jsonify({"code": 500, "message": "User already exists", "data": "A user with that username already exists"}), 200
-
-    # 检查role是否在允许的值范围内
-    if role not in ('super_admin', 'admin', 'user'):
-        return jsonify({"code": 500, "message": "Bad Request", "data": "Invalid role specified"}), 200
-
-    if role != 'user' and g.console_actor.role != 'super_admin':
-        return forbidden('仅超级管理员可创建管理员账号')
-
-    # 创建并添加新用户
-    # 登录接口使用 bcrypt 校验，新建账号保持相同哈希方案。
-    password_hashed = bcrypt.hashpw(
-        password.encode('utf-8'),
-        bcrypt.gensalt(),
-    ).decode('utf-8')
-    new_user = User(username=username, password=password_hashed, role=role)
-    db.session.add(new_user)
-    db.session.commit()
-
-    return jsonify({"code": 200, "message": "Success", "data": {"user_id": new_user.uid}}), 200
 
 
 @user_api_pb.route('/user/list', methods=['GET'])

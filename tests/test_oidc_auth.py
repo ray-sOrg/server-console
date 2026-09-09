@@ -5,7 +5,6 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from urllib.parse import parse_qs, urlsplit
 
-import bcrypt
 import jwt as pyjwt
 from cryptography.hazmat.primitives.asymmetric import rsa
 from flask import Flask
@@ -32,7 +31,6 @@ class OidcAuthTests(unittest.TestCase):
     def setUpClass(cls):
         cls.private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         cls.other_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-        cls.password_hash = bcrypt.hashpw(b'test-password', bcrypt.gensalt()).decode()
 
     def setUp(self):
         self.app = Flask(__name__)
@@ -61,7 +59,7 @@ class OidcAuthTests(unittest.TestCase):
         self.context.push()
         for model in (User, AuthSession, OidcLoginAttempt):
             model.__table__.create(db.engine)
-        db.session.add(User(username='tangtao', password=self.password_hash,
+        db.session.add(User(username='tangtao', password='legacy-login-disabled',
                             oidc_subject='identity-tangtao', role='admin'))
         db.session.commit()
         self.client = self.app.test_client()

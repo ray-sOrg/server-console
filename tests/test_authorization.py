@@ -4,7 +4,6 @@ from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
-import bcrypt
 from flask import Flask
 from flask_jwt_extended import create_access_token
 
@@ -93,7 +92,7 @@ class AuthorizationTests(unittest.TestCase):
 
     def test_all_management_routes_reject_anonymous_members_and_deleted_users(self):
         routes = [
-            ('GET', '/api/user/list'), ('POST', '/api/user/add'),
+            ('GET', '/api/user/list'),
             ('POST', '/api/user/delete'),
             ('POST', '/api/chuan-dai/dish'),
             ('PUT', '/api/chuan-dai/dish/unknown'),
@@ -127,23 +126,12 @@ class AuthorizationTests(unittest.TestCase):
         self.assertEqual(WeddingMusic.query.count(), 0)
         self.assertEqual(WeddingPhotoWall.query.count(), 0)
 
-    def test_admin_creation_hierarchy_and_password_hash(self):
-        for actor, target_role, code in (
-            ('admin', 'admin', 403), ('admin', 'super_admin', 403),
-            ('admin', 'user', 200), ('root', 'admin', 200),
-            ('root', 'super_admin', 200),
-        ):
-            with self.subTest(actor=actor, role=target_role):
-                name = actor + '-' + target_role
-                result = self.request('POST', '/api/user/add', self.auth(actor), {
-                    'username': name, 'password': 'NewPassword123!', 'role': target_role,
-                }).get_json()
-                self.assertEqual(result['code'], code)
-                user = User.query.filter_by(username=name).first()
-                if code == 403:
-                    self.assertIsNone(user)
-                else:
-                    self.assertTrue(bcrypt.checkpw(b'NewPassword123!', user.password.encode()))
+    def test_legacy_local_user_creation_is_not_exposed(self):
+        result = self.request('POST', '/api/user/add', self.auth('root'), {
+            'username': 'new-user', 'password': 'NewPassword123!', 'role': 'user',
+        })
+        self.assertEqual(result.status_code, 404)
+        self.assertIsNone(User.query.filter_by(username='new-user').first())
 
     def test_delete_hierarchy_and_self_protection(self):
         for actor, target, code in (

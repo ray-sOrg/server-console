@@ -10,5 +10,4 @@ python-dotenv
 celery
 redis
 gunicorn
-bcrypt
 PyJWT[crypto]
