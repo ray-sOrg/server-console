@@ -207,7 +207,8 @@ jobs:
           PAYLOAD="$(jq -n --arg content "$CONTENT" \
             '{msgtype: "markdown", markdown: {content: $content}}')"
           RESPONSE="$(curl --fail-with-body --silent --show-error \
-            --retry 2 --retry-all-errors \
+            --retry 2 --retry-all-errors --retry-delay 2 --retry-max-time 45 \
+            --connect-timeout 5 --max-time 15 \
             --header 'Content-Type: application/json' \
             --data "$PAYLOAD" \
             "$WECOM_WEBHOOK_URL")"
