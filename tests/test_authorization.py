@@ -61,14 +61,34 @@ class AuthorizationTests(unittest.TestCase):
             ('root', 'super_admin'), ('admin', 'admin'),
             ('member', 'user'), ('other', 'user'),
         ):
-            db.session.add(User(username=name, password='unused', role=role))
+            db.session.add(User(
+                username=name,
+                password='unused',
+                role=role,
+                oidc_subject='identity-' + name,
+            ))
         db.session.commit()
         self.client = self.app.test_client()
-        self.slowdown = patch.object(user_api.time, 'sleep')
-        self.slowdown.start()
+        self.central_users = [
+            {
+                'id': 'identity-' + name,
+                'username': name,
+                'enabled': True,
+                'emailVerified': False,
+                'requiredActions': [],
+                'createdTimestamp': 1_780_000_000_000,
+            }
+            for name in ('root', 'admin', 'member', 'other')
+        ]
+        self.central_list = patch.object(
+            user_api.keycloak_admin,
+            'list_users',
+            return_value=self.central_users,
+        )
+        self.central_list.start()
 
     def tearDown(self):
-        self.slowdown.stop()
+        self.central_list.stop()
         db.session.remove()
         db.engine.dispose()
         self.context.pop()
@@ -94,6 +114,9 @@ class AuthorizationTests(unittest.TestCase):
         routes = [
             ('GET', '/api/user/list'),
             ('POST', '/api/user/delete'),
+            ('POST', '/api/user/password/reset'),
+            ('POST', '/api/user/status/update'),
+            ('POST', '/api/user/sessions/logout'),
             ('POST', '/api/chuan-dai/dish'),
             ('PUT', '/api/chuan-dai/dish/unknown'),
             ('DELETE', '/api/chuan-dai/dish/unknown'),
@@ -172,6 +195,63 @@ class AuthorizationTests(unittest.TestCase):
         self.assertEqual(result['code'], 200)
         self.assertEqual(User.query.filter_by(username='member').one().role, 'user')
         self.assertEqual(self.request('GET', '/api/user/list', self.auth('admin')).get_json()['code'], 200)
+
+    def test_central_user_list_merges_business_roles(self):
+        result = self.request('GET', '/api/user/list', self.auth('admin')).get_json()
+        self.assertEqual(result['code'], 200)
+        self.assertEqual(result['total'], 4)
+        by_name = {item['username']: item for item in result['data']}
+        self.assertEqual(by_name['root']['role'], 'super_admin')
+        self.assertEqual(by_name['member']['oidcSubject'], 'identity-member')
+        self.assertTrue(by_name['member']['mapped'])
+
+    def test_only_super_admin_can_manage_central_accounts(self):
+        identity = self.central_users[2]
+        with patch.object(user_api.keycloak_admin, 'get_user', return_value=identity), \
+                patch.object(user_api.keycloak_admin, 'reset_temporary_password') as reset, \
+                patch.object(user_api.keycloak_admin, 'logout_user') as logout:
+            denied = self.request(
+                'POST', '/api/user/password/reset', self.auth('admin'),
+                {'oidcSubject': identity['id']},
+            ).get_json()
+            self.assertEqual(denied['code'], 403)
+            allowed = self.request(
+                'POST', '/api/user/password/reset', self.auth('root'),
+                {'oidcSubject': identity['id']},
+            ).get_json()
+        self.assertEqual(allowed['code'], 200)
+        self.assertEqual(allowed['data']['username'], 'member')
+        password = allowed['data']['temporaryPassword']
+        self.assertGreaterEqual(len(password), 20)
+        self.assertTrue(any(char.isupper() for char in password))
+        self.assertTrue(any(char.islower() for char in password))
+        self.assertTrue(any(char.isdigit() for char in password))
+        self.assertTrue(any(char in '!@#$%^&*' for char in password))
+        reset.assert_called_once_with(identity['id'], password)
+        logout.assert_called_once_with(identity['id'])
+
+    def test_status_update_protects_self_and_revokes_disabled_user(self):
+        root = self.central_users[0]
+        member = self.central_users[2]
+        with patch.object(user_api.keycloak_admin, 'get_user', return_value=root), \
+                patch.object(user_api.keycloak_admin, 'set_user_enabled') as update:
+            result = self.request(
+                'POST', '/api/user/status/update', self.auth('root'),
+                {'oidcSubject': root['id'], 'enabled': False},
+            ).get_json()
+        self.assertEqual(result['code'], 403)
+        update.assert_not_called()
+
+        with patch.object(user_api.keycloak_admin, 'get_user', return_value=member), \
+                patch.object(user_api.keycloak_admin, 'set_user_enabled') as update, \
+                patch.object(user_api.keycloak_admin, 'logout_user') as logout:
+            result = self.request(
+                'POST', '/api/user/status/update', self.auth('root'),
+                {'oidcSubject': member['id'], 'enabled': False},
+            ).get_json()
+        self.assertEqual(result['code'], 200)
+        update.assert_called_once_with(member['id'], False)
+        logout.assert_called_once_with(member['id'])
 
     def test_wedding_admin_write_and_public_reads(self):
         result = self.request('POST', '/api/wedding/music/add', self.auth('admin'), {

@@ -23,3 +23,15 @@ def admin_required(fn):
         g.console_actor = user
         return fn(*args, **kwargs)
     return wrapped
+
+
+def super_admin_required(fn):
+    @wraps(fn)
+    @jwt_required()
+    def wrapped(*args, **kwargs):
+        user = User.query.filter_by(username=get_jwt_identity()).first()
+        if user is None or user.role != 'super_admin':
+            return forbidden('仅超级管理员可管理统一账号')
+        g.console_actor = user
+        return fn(*args, **kwargs)
+    return wrapped
