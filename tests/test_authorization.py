@@ -208,6 +208,7 @@ class AuthorizationTests(unittest.TestCase):
     def test_only_super_admin_can_manage_central_accounts(self):
         identity = self.central_users[2]
         with patch.object(user_api.keycloak_admin, 'get_user', return_value=identity), \
+                patch.object(user_api.keycloak_admin, 'require_password_update') as require_update, \
                 patch.object(user_api.keycloak_admin, 'reset_temporary_password') as reset, \
                 patch.object(user_api.keycloak_admin, 'logout_user') as logout:
             denied = self.request(
@@ -227,6 +228,7 @@ class AuthorizationTests(unittest.TestCase):
         self.assertTrue(any(char.islower() for char in password))
         self.assertTrue(any(char.isdigit() for char in password))
         self.assertTrue(any(char in '!@#$%^&*' for char in password))
+        require_update.assert_called_once_with(identity['id'], [])
         reset.assert_called_once_with(identity['id'], password)
         logout.assert_called_once_with(identity['id'])
 

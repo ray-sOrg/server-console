@@ -114,6 +114,9 @@ def reset_user_password():
         return error
     password = keycloak_admin.generate_temporary_password()
     try:
+        keycloak_admin.require_password_update(
+            identity['id'], identity.get('requiredActions'),
+        )
         keycloak_admin.reset_temporary_password(identity['id'], password)
         keycloak_admin.logout_user(identity['id'])
     except keycloak_admin.KeycloakAdminError as exc:

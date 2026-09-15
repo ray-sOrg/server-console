@@ -87,6 +87,14 @@ def reset_temporary_password(user_id, password):
     })
 
 
+def require_password_update(user_id, current_actions=None):
+    actions = set(current_actions or [])
+    actions.add('UPDATE_PASSWORD')
+    _request('PUT', f'users/{user_id}', json={
+        'requiredActions': sorted(actions),
+    })
+
+
 def set_user_enabled(user_id, enabled):
     _request('PUT', f'users/{user_id}', json={'enabled': enabled})
 
