@@ -292,7 +292,7 @@ class AuthorizationTests(unittest.TestCase):
             'https://auth.example/realms/test/protocol/openid-connect/auth?',
         ))
         self.assertIn('code_challenge_method=S256', response.location)
-        self.assertTrue(any('console_oidc_state_v3=' in value and 'Max-Age=600' in value
+        self.assertTrue(any('console_oidc_state_v4_' in value and 'Max-Age=1800' in value
                             for value in response.headers.getlist('Set-Cookie')))
         attempt = OidcLoginAttempt.query.one()
         self.assertEqual(attempt.target_app, 'weight')

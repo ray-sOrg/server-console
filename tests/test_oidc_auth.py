@@ -81,7 +81,10 @@ class OidcAuthTests(unittest.TestCase):
         query = parse_qs(urlsplit(response.location).query)
         self.assertEqual(query['prompt'], ['none'])
         self.assertTrue(query['state'][0].startswith('silent.console.'))
-        self.assertEqual(self.client.get_cookie(auth_api.OIDC_STATE_COOKIE, domain='api.tt829.cn', path=CALLBACK_PATH).value, manual_state)
+        self.assertEqual(self.client.get_cookie(
+            auth_api.oidc_state_cookie_name(manual_state),
+            domain='api.tt829.cn', path=CALLBACK_PATH,
+        ).value, manual_state)
         result = self.client.get(CALLBACK_PATH, query_string={'state': query['state'][0], 'error': 'login_required'}, base_url=API_ORIGIN)
         self.assertEqual(result.status_code, 200)
         self.assertNotIn('Location', result.headers)
@@ -174,14 +177,32 @@ class OidcAuthTests(unittest.TestCase):
             self.assertEqual(OidcLoginAttempt.query.count(), 0)
             self.assertFalse(response.headers.getlist('Set-Cookie'))
         state, _, response = self.begin()
-        cookie = self.client.get_cookie(auth_api.OIDC_STATE_COOKIE,
+        cookie = self.client.get_cookie(auth_api.oidc_state_cookie_name(state),
                                         domain='api.tt829.cn', path=CALLBACK_PATH)
         self.assertEqual(cookie.value, state)
         self.assertTrue(cookie.origin_only)
         self.assertTrue(cookie.http_only)
         self.assertTrue(cookie.secure)
         self.assertEqual(cookie.same_site, 'Lax')
-        self.assertEqual(cookie.max_age, 600)
+        self.assertEqual(cookie.max_age, 1800)
+
+    def test_concurrent_login_attempts_keep_independent_browser_state(self):
+        first_state, first_nonce, _ = self.begin()
+        second_state, second_nonce, _ = self.begin()
+        for state in (first_state, second_state):
+            cookie = self.client.get_cookie(
+                auth_api.oidc_state_cookie_name(state),
+                domain='api.tt829.cn', path=CALLBACK_PATH,
+            )
+            self.assertIsNotNone(cookie)
+            self.assertEqual(cookie.value, state)
+        first, first_exchange = self.callback(first_state, self.claims(first_nonce))
+        second, second_exchange = self.callback(second_state, self.claims(second_nonce))
+        self.assertEqual(first.location, CONSOLE_ORIGIN)
+        self.assertEqual(second.location, CONSOLE_ORIGIN)
+        first_exchange.assert_called_once()
+        second_exchange.assert_called_once()
+        self.assertEqual(AuthSession.query.count(), 2)
 
     def test_reverse_proxy_http_scheme_does_not_cause_redirect_loop(self):
         response = self.client.get('/api/auth/oidc/login', base_url='http://api.tt829.cn')
@@ -191,14 +212,18 @@ class OidcAuthTests(unittest.TestCase):
     def test_missing_and_mismatched_browser_state_reject_before_exchange(self):
         for cookie_state in (None, 'wrong-browser-state'):
             state, nonce, _ = self.begin()
-            self.client.delete_cookie(auth_api.OIDC_STATE_COOKIE,
+            cookie_name = auth_api.oidc_state_cookie_name(state)
+            self.client.delete_cookie(cookie_name,
                                       domain='api.tt829.cn', path=CALLBACK_PATH)
             if cookie_state:
-                self.client.set_cookie(auth_api.OIDC_STATE_COOKIE, cookie_state,
+                self.client.set_cookie(cookie_name, cookie_state,
                                        domain='api.tt829.cn', path=CALLBACK_PATH)
             response, exchange = self.callback(state, self.claims(nonce))
-            self.assertEqual(response.status_code, 400)
-            self.assertEqual(response.json['message'], 'Invalid login state')
+            self.assertEqual(response.status_code, 302)
+            self.assertEqual(
+                response.location,
+                CONSOLE_ORIGIN + '/login?auth_error=invalid_state',
+            )
             exchange.assert_not_called()
             self.assertEqual(AuthSession.query.count(), 0)
 
@@ -207,7 +232,10 @@ class OidcAuthTests(unittest.TestCase):
         OidcLoginAttempt.query.one().expires_at = utc_now() - timedelta(seconds=1)
         db.session.commit()
         response, exchange = self.callback(state, self.claims(nonce))
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response.location, CONSOLE_ORIGIN + '/login?auth_error=expired',
+        )
         exchange.assert_not_called()
         self.assertEqual(AuthSession.query.count(), 0)
 
@@ -275,7 +303,7 @@ class OidcAuthTests(unittest.TestCase):
             for path in ('/', '/api/auth'):
                 self.assertIsNone(self.client.get_cookie(name, domain='api.tt829.cn', path=path))
         self.assertIsNone(self.client.get_cookie('refresh_token_cookie', domain='tt829.cn'))
-        self.assertIsNone(self.client.get_cookie(auth_api.OIDC_STATE_COOKIE,
+        self.assertIsNone(self.client.get_cookie(auth_api.oidc_state_cookie_name(state),
                                                  domain='api.tt829.cn', path=CALLBACK_PATH))
 
         for origin in (CONSOLE_ORIGIN, WEIGHT_ORIGIN):
@@ -312,10 +340,13 @@ class OidcAuthTests(unittest.TestCase):
         self.assertEqual(info.json['code'], 5005)
 
         # Even restoring an old browser state cannot reuse a consumed attempt.
-        self.client.set_cookie(auth_api.OIDC_STATE_COOKIE, state,
+        self.client.set_cookie(auth_api.oidc_state_cookie_name(state), state,
                                domain='api.tt829.cn', path=CALLBACK_PATH)
         replay, repeated_exchange = self.callback(state, self.claims(nonce))
-        self.assertEqual(replay.status_code, 400)
+        self.assertEqual(replay.status_code, 302)
+        self.assertEqual(
+            replay.location, CONSOLE_ORIGIN + '/login?auth_error=expired',
+        )
         repeated_exchange.assert_not_called()
         self.assertEqual(AuthSession.query.count(), 1)
 

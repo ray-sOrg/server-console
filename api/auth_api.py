@@ -43,9 +43,13 @@ AUTH_COOKIE_NAMES = (
     'refresh_token_cookie',
     'csrf_refresh_token',
 )
-OIDC_STATE_COOKIE = 'console_oidc_state_v3'
-LEGACY_OIDC_STATE_COOKIES = ('console_oidc_state', 'console_oidc_state_v2')
-OIDC_ATTEMPT_LIFETIME = timedelta(minutes=10)
+OIDC_STATE_COOKIE = 'console_oidc_state_v4_'
+LEGACY_OIDC_STATE_COOKIES = (
+    'console_oidc_state', 'console_oidc_state_v2', 'console_oidc_state_v3',
+)
+# A first login can include a required password update. Keep the browser-bound,
+# one-time PKCE attempt alive for the same practical duration as that flow.
+OIDC_ATTEMPT_LIFETIME = timedelta(minutes=30)
 
 
 def oidc_setting(name):
@@ -75,8 +79,18 @@ def clear_legacy_root_cookies(response):
                 )
 
 
+def oidc_state_cookie_name(state):
+    return OIDC_STATE_COOKIE + digest(state)[:24]
+
+
+def clear_oidc_state_cookie(response, state):
+    if state:
+        response.delete_cookie(
+            oidc_state_cookie_name(state), path='/api/auth/oidc/callback',
+        )
+
+
 def clear_oidc_state_cookies(response):
-    response.delete_cookie(OIDC_STATE_COOKIE, path='/api/auth/oidc/callback')
     configured_domain = current_app.config.get('JWT_COOKIE_DOMAIN')
     domains = (None, configured_domain) if configured_domain else (None,)
     for domain in domains:
@@ -91,7 +105,9 @@ def oidc_failure(target_app, reason):
     path = '/login' if target_app == 'console' else '/'
     current_app.logger.warning('OIDC login rejected: app=%s reason=%s', target_app, reason)
     response = silent_sso_result(target_app, False) if request.args.get('state', '').startswith('silent.') else redirect(target_url + path + '?' + urlencode({'auth_error': reason}))
-    if not request.args.get('state', '').startswith('silent.'):
+    state = request.args.get('state', '')
+    clear_oidc_state_cookie(response, state)
+    if not state.startswith('silent.'):
         clear_oidc_state_cookies(response)
     return response
 
@@ -105,7 +121,6 @@ def silent_sso_result(target_app, authenticated):
     response.headers['Cache-Control'] = 'no-store'
     response.headers['Referrer-Policy'] = 'no-referrer'
     response.headers['Content-Security-Policy'] = f"default-src 'none'; script-src 'nonce-{nonce}'; frame-ancestors {origin}"
-    response.delete_cookie(OIDC_STATE_COOKIE + '_silent_' + target_app, path='/api/auth/oidc/callback')
     return response
 
 
@@ -180,7 +195,7 @@ def oidc_login():
     else:
         clear_oidc_state_cookies(response)
     response.set_cookie(
-        OIDC_STATE_COOKIE + ('_silent_' + target_app if silent else ''), state, httponly=True,
+        oidc_state_cookie_name(state), state, httponly=True,
         secure=current_app.config.get('JWT_COOKIE_SECURE', False),
         samesite='Lax', path='/api/auth/oidc/callback',
         max_age=int(OIDC_ATTEMPT_LIFETIME.total_seconds()),
@@ -192,12 +207,21 @@ def oidc_login():
 def oidc_callback():
     state = request.args.get('state', '')
     silent_app = state.split('.')[1] if state.startswith('silent.') and len(state.split('.')) == 3 else None
-    cookie_state = request.cookies.get(OIDC_STATE_COOKIE + ('_silent_' + silent_app if silent_app in APP_TARGETS else ''))
+    attempt = db.session.get(OidcLoginAttempt, digest(state)) if state else None
+    cookie_state = request.cookies.get(oidc_state_cookie_name(state)) if state else None
     if not state or not cookie_state or not secrets.compare_digest(state, cookie_state):
-        return jsonify({'code': 400, 'message': 'Invalid login state', 'data': {}}), 400
-    attempt = db.session.get(OidcLoginAttempt, digest(state))
+        target_app = attempt.target_app if attempt else (
+            silent_app if silent_app in APP_TARGETS else 'console'
+        )
+        return oidc_failure(target_app, 'invalid_state')
     if not attempt or ensure_utc(attempt.expires_at) <= utc_now():
-        return jsonify({'code': 400, 'message': 'Login request expired', 'data': {}}), 400
+        target_app = attempt.target_app if attempt else (
+            silent_app if silent_app in APP_TARGETS else 'console'
+        )
+        if attempt:
+            db.session.delete(attempt)
+            db.session.commit()
+        return oidc_failure(target_app, 'expired')
     target_app = attempt.target_app
     nonce = attempt.nonce
     verifier = attempt.code_verifier
@@ -261,6 +285,7 @@ def oidc_callback():
         )
         db.session.commit()
         response = silent_sso_result(target_app, True) if silent_app else redirect(target_url)
+        clear_oidc_state_cookie(response, state)
         if not silent_app:
             clear_oidc_state_cookies(response)
         clear_legacy_root_cookies(response)
