@@ -125,6 +125,13 @@ def ensure_default_fitness_data(db, user_identity):
         db.session.add(exercise)
         by_name[name] = exercise
 
+    # Custom exercises can also have curated media mappings. Apply those
+    # mappings without clearing media for names that are not in the catalog.
+    for name, exercise in by_name.items():
+        media = media_for_exercise(name)
+        if media is not None and exercise.media != media:
+            exercise.media = media
+
     db.session.flush()
 
     # Keep current plans and unfinished workouts aligned with rest-time

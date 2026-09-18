@@ -7,7 +7,7 @@ FITNESS_CDN_BASE_URL = os.getenv(
 ).rstrip('/')
 
 
-# name: (slug, match type, extension, note)
+# name: (slug, match type, extension, note[, image positions])
 EXERCISE_MEDIA = {
     '俄挺前倾支撑': ('planche-lean', 'related', 'png', '俯卧支撑姿势参考；前倾支撑应按动作要点完成。'),
     '杠铃卧推': ('barbell-bench-press', 'exact', 'png', None),
@@ -45,6 +45,16 @@ EXERCISE_MEDIA = {
     '轻松走路': ('easy-walking', 'related', 'png', '仅参考行进方向；轻松走路不需要做弓步。'),
     '肩胸髋灵活性': ('shoulder-chest-hip-mobility', 'related', 'png', '肩部活动轨迹参考；各部位按计划分别完成。'),
     '周训练复盘': ('weekly-training-review', 'informational', 'svg', '这是复盘任务，不是训练动作。'),
+    '高脚杯深蹲': ('goblet-squat', 'exact', 'jpg', None, ('overview',)),
+    '臀桥': ('glute-bridge', 'exact', 'jpg', None, ('overview',)),
+    '站姿提踵': ('standing-calf-raise', 'exact', 'jpg', None, ('overview',)),
+    '死虫': ('dead-bug', 'exact', 'jpg', None, ('overview',)),
+    '哑铃卧推': ('dumbbell-bench-press', 'exact', 'jpg', None, ('overview',)),
+    '肩外旋': ('shoulder-external-rotation', 'exact', 'jpg', None, ('overview',)),
+    '平板支撑': ('forearm-plank', 'exact', 'jpg', None, ('overview',)),
+    '胸托哑铃划船': ('chest-supported-dumbbell-row', 'exact', 'jpg', None, ('overview',)),
+    '坐姿哑铃肩推': ('seated-dumbbell-shoulder-press', 'exact', 'jpg', None, ('overview',)),
+    '招财猫外旋': ('goalpost-external-rotation', 'exact', 'jpg', None, ('overview',)),
 }
 
 
@@ -53,15 +63,15 @@ def media_for_exercise(name):
     if not config:
         return None
 
-    slug, match_type, extension, note = config
+    slug, match_type, extension, note, *position_config = config
     base_url = f'{FITNESS_CDN_BASE_URL}/fitness/exercises/{slug}'
-    if match_type == 'informational':
-        images = [{'position': 'overview', 'url': f'{base_url}/overview.{extension}'}]
-    else:
-        images = [
-            {'position': 'start', 'url': f'{base_url}/start.{extension}'},
-            {'position': 'finish', 'url': f'{base_url}/finish.{extension}'},
-        ]
+    positions = position_config[0] if position_config else (
+        ('overview',) if match_type == 'informational' else ('start', 'finish')
+    )
+    images = [
+        {'position': position, 'url': f'{base_url}/{position}.{extension}'}
+        for position in positions
+    ]
 
     return {
         'matchType': match_type,
