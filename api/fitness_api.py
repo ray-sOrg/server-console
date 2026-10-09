@@ -206,6 +206,15 @@ def serialize_session(session, include_previous=False):
     return result
 
 
+def commit_session_response(session, include_previous=True):
+    # Serialize while the loaded graph is still available. Commit expires ORM
+    # objects and otherwise makes the response reload every exercise and set.
+    db.session.flush()
+    result = serialize_session(session, include_previous=include_previous)
+    db.session.commit()
+    return success(result)
+
+
 def session_progress(session):
     sets = [item for exercise in session.exercises for item in exercise.sets]
     completed_sets = sum(1 for item in sets if item.completed)
@@ -740,8 +749,7 @@ def start_fitness_session():
                     set_number=set_number,
                 ))
 
-        db.session.commit()
-        return success(serialize_session(session, include_previous=True))
+        return commit_session_response(session)
     except ValueError as error:
         db.session.rollback()
         return failure(str(error))
@@ -804,8 +812,7 @@ def save_fitness_set():
         session_exercise.completed = all(item.completed for item in session_exercise.sets)
         session.status = 'in_progress'
         session.ended_at = None
-        db.session.commit()
-        return success(serialize_session(session, include_previous=True))
+        return commit_session_response(session)
     except ValueError as error:
         db.session.rollback()
         return failure(str(error))
@@ -842,8 +849,7 @@ def defer_fitness_set():
 
         fitness_set.deferred_at = datetime.utcnow()
         fitness_set.activated_at = None
-        db.session.commit()
-        return success(serialize_session(session, include_previous=True))
+        return commit_session_response(session)
     except ValueError as error:
         db.session.rollback()
         return failure(str(error))
@@ -881,8 +887,7 @@ def activate_fitness_set():
             for session_set in exercise.sets:
                 session_set.activated_at = None
         fitness_set.activated_at = datetime.utcnow()
-        db.session.commit()
-        return success(serialize_session(session, include_previous=True))
+        return commit_session_response(session)
     except ValueError as error:
         db.session.rollback()
         return failure(str(error))
@@ -959,8 +964,7 @@ def finish_fitness_session():
             session.status = 'skipped'
         session.ended_at = datetime.utcnow()
         apply_session_feedback(session, data)
-        db.session.commit()
-        return success(serialize_session(session, include_previous=True))
+        return commit_session_response(session)
     except ValueError as error:
         db.session.rollback()
         return failure(str(error))
@@ -980,8 +984,7 @@ def save_fitness_session_feedback():
             user_identity,
         )
         apply_session_feedback(session, data)
-        db.session.commit()
-        return success(serialize_session(session, include_previous=True))
+        return commit_session_response(session)
     except ValueError as error:
         db.session.rollback()
         return failure(str(error))

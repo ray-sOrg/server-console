@@ -1,3 +1,5 @@
+from sqlalchemy.orm import lazyload
+
 from model.fitness_exercise import FitnessExercise
 from model.fitness_plan import FitnessPlan
 from model.fitness_plan_day import FitnessPlanDay
@@ -132,28 +134,35 @@ def ensure_default_fitness_data(db, user_identity):
         if media is not None and exercise.media != media:
             exercise.media = media
 
+    seed_changed = bool(db.session.new or db.session.dirty)
     db.session.flush()
 
     # Keep current plans and unfinished workouts aligned with rest-time
     # refinements made after using the program in real training sessions.
-    for exercise_name in ('杠铃深蹲', '引体向上'):
-        exercise = by_name.get(exercise_name)
-        if not exercise:
-            continue
-        plan_items = FitnessPlanExercise.query.join(FitnessPlanDay).join(FitnessPlan).filter(
+    rest_exercise_ids = [
+        by_name[name].id for name in ('杠铃深蹲', '引体向上') if name in by_name
+    ]
+    if rest_exercise_ids:
+        plan_items = FitnessPlanExercise.query.options(lazyload('*')).join(
+            FitnessPlanDay,
+        ).join(FitnessPlan).filter(
             FitnessPlan.user_identity == user_identity,
-            FitnessPlanExercise.exercise_id == exercise.id,
+            FitnessPlanExercise.exercise_id.in_(rest_exercise_ids),
             FitnessPlanExercise.rest_seconds != 120,
         ).all()
-        active_session_items = FitnessSessionExercise.query.join(FitnessSession).filter(
+        active_session_items = FitnessSessionExercise.query.options(lazyload('*')).join(
+            FitnessSession,
+        ).filter(
             FitnessSession.user_identity == user_identity,
             FitnessSession.status == 'in_progress',
-            FitnessSessionExercise.exercise_id == exercise.id,
+            FitnessSessionExercise.exercise_id.in_(rest_exercise_ids),
             FitnessSessionExercise.rest_seconds != 120,
         ).all()
         for item in [*plan_items, *active_session_items]:
             item.rest_seconds = 120
 
+    # The following query can autoflush changes, so retain the write marker.
+    seed_changed = seed_changed or bool(db.session.new or db.session.dirty)
     existing_plan = FitnessPlan.query.filter_by(
         user_identity=user_identity,
     ).order_by(
@@ -161,13 +170,15 @@ def ensure_default_fitness_data(db, user_identity):
         FitnessPlan.created_at.asc(),
     ).first()
     if existing_plan:
-        db.session.commit()
+        if seed_changed or db.session.new or db.session.dirty or db.session.deleted:
+            db.session.commit()
         return existing_plan
 
     # Existing users may intentionally delete every plan. Exercises act as the
     # initialization marker so bootstrap does not recreate the default plan.
     if had_fitness_data:
-        db.session.commit()
+        if seed_changed or db.session.new or db.session.dirty or db.session.deleted:
+            db.session.commit()
         return None
 
     plan = FitnessPlan(
