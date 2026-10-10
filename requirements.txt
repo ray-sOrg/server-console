@@ -1,5 +1,5 @@
 Flask
-SQLAlchemy
+SQLAlchemy==2.0.53
 requests
 flask_cors
 flask_sqlalchemy

@@ -33,6 +33,14 @@ jobs:
           cache: pip
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
+      - name: Verify PostgreSQL driver compatibility
+        run: |
+          python - <<'PYTHON'
+          from sqlalchemy import create_engine
+          engine = create_engine('postgresql://localhost/driver_smoke_test')
+          assert engine.dialect.driver == 'psycopg2', engine.dialect.driver
+          engine.dispose()
+          PYTHON
       - name: Run isolated SQLite tests
         run: python -m unittest discover -s tests -v
 
